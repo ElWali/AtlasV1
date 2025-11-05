@@ -1,0 +1,29 @@
+{
+  "name": "app",
+  "version": "1.0.0",
+  "description": "Atlas.js is a lightweight, open-source JavaScript library for creating interactive maps.",
+  "main": "Atlas.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ElWali/AtlasV1.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/ElWali/AtlasV1/issues"
+  },
+  "homepage": "https://github.com/ElWali/AtlasV1#readme",
+  "dependencies": {
+    "canvas": "^3.2.0",
+    "jsdom": "^27.1.0",
+    "mocha": "^11.7.5"
+  }
+}
