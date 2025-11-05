@@ -38,6 +38,97 @@ const map = new Atlas('map', {
 });
 ```
 
+### Adding a Marker
+
+To add a marker to the map, create a new `AtlasMarker` instance and add it to the map:
+
+```javascript
+const marker = new AtlasMarker({ lat: 51.505, lon: -0.09 });
+marker.addTo(map);
+```
+
+### Adding a GeoJSON Layer
+
+To add a GeoJSON layer to the map, create a new `GeoJSONLayer` instance and add it to the map:
+
+```javascript
+const geojson = {
+  type: 'FeatureCollection',
+  features: [
+    {
+      type: 'Feature',
+      geometry: {
+        type: 'Point',
+        coordinates: [-0.09, 51.505]
+      },
+      properties: {
+        name: 'A GeoJSON Point'
+      }
+    }
+  ]
+};
+
+const geojsonLayer = new GeoJSONLayer(geojson);
+geojsonLayer.addTo(map);
+```
+
+## API Reference
+
+### `Atlas`
+
+The main map class.
+
+- `new Atlas(id, options)`: Creates a new map instance.
+- `addLayer(layer)`: Adds a layer to the map.
+- `removeLayer(layer)`: Removes a layer from the map.
+- `addControl(control)`: Adds a control to the map.
+- `removeControl(control)`: Removes a control from the map.
+- `setZoom(zoom)`: Sets the zoom level of the map.
+- `setBearing(bearing)`: Sets the bearing of the map in radians.
+- `flyTo(options)`: Animates the map to a new view.
+
+### `TileLayer`
+
+A layer for displaying tiled map data.
+
+- `new TileLayer(urlTemplate, options)`: Creates a new tile layer.
+
+### `GeoJSONLayer`
+
+A layer for displaying GeoJSON data.
+
+- `new GeoJSONLayer(geojson, options)`: Creates a new GeoJSON layer.
+- `setData(geojson)`: Sets the GeoJSON data for the layer.
+- `getData()`: Gets the GeoJSON data for the layer.
+
+### `AtlasMarker`
+
+A marker that can be placed on the map.
+
+- `new AtlasMarker(latlng, options)`: Creates a new marker.
+- `setLatLng(latlng)`: Sets the geographical coordinate of the marker.
+- `getLatLng()`: Gets the geographical coordinate of the marker.
+- `bindPopup(content, options)`: Binds a popup to the marker.
+
+### `AtlasPopup`
+
+A popup that can be opened on the map.
+
+- `new AtlasPopup(content, options)`: Creates a new popup.
+- `openOn(anchor)`: Opens the popup on the map.
+- `close()`: Closes the popup.
+- `setContent(content)`: Sets the content of the popup.
+
+## Development
+
+To set up a development environment, you will need a local web server to serve the files. A simple way to do this is to use Python's built-in HTTP server:
+
+```bash
+python3 -m http.server
+```
+
+This will start a web server in the current directory, and you can access the `index.html` file at `http://localhost:8000`.
+
 ## Contributing
 
 Contributions are welcome! Please open an issue or submit a pull request on our [GitHub repository](https://github.com/your-username/atlas.js).
