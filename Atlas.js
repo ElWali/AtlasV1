@@ -1499,7 +1499,6 @@
       onAdd() {
         const container = document.createElement('div');
         container.className = 'atlas-attribution-control';
-        container.id = 'attribution';
         container.innerHTML = this.options.prefix;
         this._container = container;
         return container;
@@ -3717,4 +3716,11 @@
       document.addEventListener('DOMContentLoaded', initializeAtlas);
     } else {
       initializeAtlas();
+    }
+
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = {
+            Atlas,
+            AttributionControl
+        };
     }
