@@ -1510,7 +1510,7 @@
       _update() {
         if (!this._map || !this._container) return;
         const attribution = this._map.getBaseLayer() ? this._map.getBaseLayer().getAttribution() : '';
-        this._container.innerHTML = this.options.prefix + (this.options.prefix && attribution ? ' | ' : '') + attribution;
+        this._container.textContent = this.options.prefix + (this.options.prefix && attribution ? ' | ' : '') + attribution;
       }
     }
 
@@ -3721,6 +3721,7 @@
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = {
             Atlas,
-            AttributionControl
+            AttributionControl,
+            TileLayer
         };
     }

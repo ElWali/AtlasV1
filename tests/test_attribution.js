@@ -58,7 +58,7 @@ global.requestAnimationFrame = (callback) => setTimeout(callback, 0);
 // Prevent the global initializeAtlas from running
 global.window.initializeAtlas = () => {};
 
-const { Atlas, AttributionControl } = require('../Atlas.js');
+const { Atlas, AttributionControl, TileLayer } = require('../Atlas.js');
 
 describe('AttributionControl', () => {
   it('should not have an id', () => {
@@ -68,5 +68,20 @@ describe('AttributionControl', () => {
 
     const container = control.getContainer();
     assert.strictEqual(container.id, '');
+  });
+
+  it('should not inject script elements into the attribution text', () => {
+    const map = new Atlas('map');
+    const control = new AttributionControl();
+    map.addControl(control);
+
+    const maliciousAttribution = '<script>window.hacked = true;</script>';
+    const layer = new TileLayer('', { attribution: maliciousAttribution });
+    map.setBaseLayer(layer);
+
+    map.updateAttribution();
+
+    const container = control.getContainer();
+    assert.strictEqual(container.querySelector('script'), null, 'Script element should not be in the container');
   });
 });
