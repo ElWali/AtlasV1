@@ -450,11 +450,15 @@
 
         const startX = Math.floor(ct.x - cols / 2);
         const startY = Math.floor(ct.y - rows / 2);
+        const maxTileY = Math.pow(2, zInt);
 
         const tiles = [];
         for (let dx = 0; dx < cols; dx++) {
           for (let dy = 0; dy < rows; dy++) {
             const X = startX + dx, Y = startY + dy;
+            if (Y < 0 || Y >= maxTileY) {
+                continue;
+            }
             const dist = Math.hypot(dx - cols / 2, dy - rows / 2);
             tiles.push({ X, Y, dist });
           }
