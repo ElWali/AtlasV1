@@ -1,0 +1,1063 @@
+/**
+ * Atlas.css - Lightweight Interactive Mapping Library Stylesheet
+ * Version: 1.0.0
+ * A mobile-friendly CSS for creating interactive maps
+ */
+
+/* ============================================
+   ROOT & GLOBAL STYLES
+   ============================================ */
+
+:root {
+  --atlas-primary-color: #FF6B6B;
+  --atlas-secondary-color: #4ECDC4;
+  --atlas-accent-color: #45B7D1;
+  --atlas-background: #FFFFFF;
+  --atlas-text-color: #333333;
+  --atlas-border-color: #E0E0E0;
+  --atlas-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  --atlas-shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.15);
+  --atlas-transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --atlas-border-radius: 8px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ============================================
+   ATLAS CONTAINER
+   ============================================ */
+
+.atlas-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: var(--atlas-background);
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.atlas-container canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--atlas-background);
+  touch-action: none;
+  -webkit-touch-callout: none;
+}
+
+/* ============================================
+   CONTROLS
+   ============================================ */
+
+.atlas-controls {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 10;
+  pointer-events: auto;
+}
+
+/* Position variants */
+.atlas-controls.atlas-top-left {
+  top: 16px;
+  left: 16px;
+}
+
+.atlas-controls.atlas-top-right {
+  top: 16px;
+  right: 16px;
+}
+
+.atlas-controls.atlas-bottom-left {
+  bottom: 16px;
+  left: 16px;
+}
+
+.atlas-controls.atlas-bottom-right {
+  bottom: 16px;
+  right: 16px;
+}
+
+/* ============================================
+   BUTTONS
+   ============================================ */
+
+.atlas-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  height: 40px;
+  padding: 8px 12px;
+  background: var(--atlas-background);
+  color: var(--atlas-text-color);
+  border: 1px solid var(--atlas-border-color);
+  border-radius: var(--atlas-border-radius);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--atlas-transition);
+  box-shadow: var(--atlas-shadow);
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.atlas-btn:hover:not(:disabled) {
+  background: var(--atlas-secondary-color);
+  color: var(--atlas-background);
+  border-color: var(--atlas-secondary-color);
+  transform: translateY(-2px);
+  box-shadow: var(--atlas-shadow-lg);
+}
+
+.atlas-btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: var(--atlas-shadow);
+}
+
+.atlas-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.atlas-btn:focus-visible {
+  outline: 2px solid var(--atlas-accent-color);
+  outline-offset: 2px;
+}
+
+/* Button variants */
+.atlas-btn.atlas-btn-primary {
+  background: var(--atlas-primary-color);
+  color: var(--atlas-background);
+  border-color: var(--atlas-primary-color);
+}
+
+.atlas-btn.atlas-btn-primary:hover:not(:disabled) {
+  background: #E55555;
+  border-color: #E55555;
+}
+
+.atlas-btn.atlas-btn-secondary {
+  background: var(--atlas-secondary-color);
+  color: var(--atlas-background);
+  border-color: var(--atlas-secondary-color);
+}
+
+.atlas-btn.atlas-btn-secondary:hover:not(:disabled) {
+  background: #3DB5AC;
+  border-color: #3DB5AC;
+}
+
+.atlas-btn.atlas-btn-sm {
+  min-width: 32px;
+  height: 32px;
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+.atlas-btn.atlas-btn-lg {
+  min-width: 48px;
+  height: 48px;
+  font-size: 16px;
+  padding: 12px 16px;
+}
+
+/* ============================================
+   ZOOM CONTROLS
+   ============================================ */
+
+.atlas-zoom-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-radius: var(--atlas-border-radius);
+  overflow: hidden;
+  box-shadow: var(--atlas-shadow-lg);
+}
+
+.atlas-zoom-controls .atlas-btn {
+  border-radius: 0;
+  border: none;
+  border-bottom: 1px solid var(--atlas-border-color);
+  box-shadow: none;
+  min-width: 40px;
+  height: 40px;
+}
+
+.atlas-zoom-controls .atlas-btn:last-child {
+  border-bottom: none;
+}
+
+.atlas-zoom-controls .atlas-btn:hover:not(:disabled) {
+  background: var(--atlas-accent-color);
+  color: var(--atlas-background);
+}
+
+/* ============================================
+   SEARCH/INPUT
+   ============================================ */
+
+.atlas-search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--atlas-background);
+  border: 1px solid var(--atlas-border-color);
+  border-radius: var(--atlas-border-radius);
+  padding: 8px 12px;
+  box-shadow: var(--atlas-shadow);
+  z-index: 10;
+  pointer-events: auto;
+}
+
+.atlas-search-box input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 14px;
+  color: var(--atlas-text-color);
+  background: transparent;
+  min-width: 150px;
+  padding: 4px 0;
+}
+
+.atlas-search-box input::placeholder {
+  color: #999;
+}
+
+.atlas-search-box input:focus {
+  color: var(--atlas-text-color);
+}
+
+.atlas-search-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--atlas-text-color);
+  font-size: 16px;
+  padding: 4px 8px;
+  transition: color 0.2s;
+}
+
+.atlas-search-btn:hover {
+  color: var(--atlas-secondary-color);
+}
+
+/* ============================================
+   POPUP/TOOLTIP
+   ============================================ */
+
+.atlas-popup {
+  position: absolute;
+  background: var(--atlas-background);
+  border: 1px solid var(--atlas-border-color);
+  border-radius: var(--atlas-border-radius);
+  padding: 12px 16px;
+  box-shadow: var(--atlas-shadow-lg);
+  z-index: 20;
+  min-width: 200px;
+  max-width: 300px;
+  pointer-events: auto;
+  animation: slideUp 0.2s ease-out;
+  transform-origin: bottom;
+}
+
+.atlas-popup.atlas-popup-top {
+  transform: translateY(-10px);
+}
+
+.atlas-popup.atlas-popup-bottom {
+  transform: translateY(10px);
+}
+
+.atlas-popup-header {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--atlas-text-color);
+  margin-bottom: 8px;
+  word-break: break-word;
+}
+
+.atlas-popup-content {
+  font-size: 13px;
+  color: #666;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.atlas-popup-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: none;
+  border: none;
+  font-size: 18px;
+  color: #999;
+  cursor: pointer;
+  padding: 4px 8px;
+  transition: color 0.2s;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.atlas-popup-close:hover {
+  color: var(--atlas-text-color);
+}
+
+/* ============================================
+   TOOLTIPS
+   ============================================ */
+
+.atlas-tooltip {
+  position: absolute;
+  background: rgba(0, 0, 0, 0.8);
+  color: var(--atlas-background);
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 15;
+  pointer-events: none;
+  animation: fadeIn 0.2s ease-out;
+  transform: translateY(-5px);
+}
+
+.atlas-tooltip.show {
+  opacity: 1;
+  visibility: visible;
+}
+
+.atlas-tooltip.hide {
+  opacity: 0;
+  visibility: hidden;
+}
+
+/* ============================================
+   SIDEBAR/PANEL
+   ============================================ */
+
+.atlas-sidebar {
+  position: absolute;
+  width: 300px;
+  height: 100%;
+  background: var(--atlas-background);
+  border-right: 1px solid var(--atlas-border-color);
+  box-shadow: var(--atlas-shadow-lg);
+  z-index: 5;
+  overflow-y: auto;
+  transition: transform 0.3s ease-out;
+  left: 0;
+  top: 0;
+}
+
+.atlas-sidebar.collapsed {
+  transform: translateX(-100%);
+}
+
+@media (max-width: 768px) {
+  .atlas-sidebar {
+    width: 100%;
+    max-width: 280px;
+  }
+}
+
+.atlas-sidebar-header {
+  padding: 16px;
+  border-bottom: 1px solid var(--atlas-border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.atlas-sidebar-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--atlas-text-color);
+}
+
+.atlas-sidebar-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: #999;
+  transition: color 0.2s;
+}
+
+.atlas-sidebar-close:hover {
+  color: var(--atlas-text-color);
+}
+
+.atlas-sidebar-content {
+  padding: 16px;
+}
+
+/* ============================================
+   LIST ITEMS
+   ============================================ */
+
+.atlas-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.atlas-list-item {
+  padding: 12px;
+  border-bottom: 1px solid var(--atlas-border-color);
+  cursor: pointer;
+  transition: var(--atlas-transition);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.atlas-list-item:hover {
+  background: #F5F5F5;
+  padding-left: 16px;
+}
+
+.atlas-list-item.active {
+  background: var(--atlas-secondary-color);
+  color: var(--atlas-background);
+  border-bottom-color: var(--atlas-secondary-color);
+}
+
+.atlas-list-item-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  background: #E0E0E0;
+  color: var(--atlas-text-color);
+  flex-shrink: 0;
+}
+
+.atlas-list-item.active .atlas-list-item-icon {
+  background: var(--atlas-primary-color);
+  color: var(--atlas-background);
+}
+
+.atlas-list-item-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.atlas-list-item-title {
+  font-weight: 600;
+  font-size: 14px;
+  margin: 0;
+  word-break: break-word;
+}
+
+.atlas-list-item-subtitle {
+  font-size: 12px;
+  opacity: 0.7;
+  margin: 4px 0 0 0;
+  word-break: break-word;
+}
+
+/* ============================================
+   SCALE BAR
+   ============================================ */
+
+.atlas-scale-bar {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  background: var(--atlas-background);
+  border: 1px solid var(--atlas-border-color);
+  border-radius: var(--atlas-border-radius);
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--atlas-text-color);
+  box-shadow: var(--atlas-shadow);
+  z-index: 8;
+  pointer-events: none;
+}
+
+.atlas-scale-bar-line {
+  width: 100px;
+  height: 2px;
+  background: var(--atlas-text-color);
+  margin: 4px 0;
+}
+
+/* ============================================
+   LEGEND
+   ============================================ */
+
+.atlas-legend {
+  position: absolute;
+  background: var(--atlas-background);
+  border: 1px solid var(--atlas-border-color);
+  border-radius: var(--atlas-border-radius);
+  padding: 16px;
+  box-shadow: var(--atlas-shadow-lg);
+  z-index: 8;
+  max-width: 280px;
+  pointer-events: auto;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.atlas-legend.atlas-top-left {
+  top: 80px;
+  left: 16px;
+}
+
+.atlas-legend.atlas-top-right {
+  top: 80px;
+  right: 16px;
+}
+
+.atlas-legend.atlas-bottom-left {
+  bottom: 80px;
+  left: 16px;
+}
+
+.atlas-legend.atlas-bottom-right {
+  bottom: 80px;
+  right: 16px;
+}
+
+.atlas-legend-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--atlas-text-color);
+}
+
+.atlas-legend-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.atlas-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.atlas-legend-item-color {
+  width: 16px;
+  height: 16px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  border: 1px solid #ddd;
+}
+
+.atlas-legend-item-label {
+  font-size: 13px;
+  color: #666;
+}
+
+/* ============================================
+   LOADING INDICATOR
+   ============================================ */
+
+.atlas-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 25;
+  pointer-events: none;
+}
+
+.atlas-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid var(--atlas-border-color);
+  border-top-color: var(--atlas-secondary-color);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* ============================================
+   RESPONSIVE DESIGN
+   ============================================ */
+
+/* Tablets */
+@media (max-width: 1024px) {
+  .atlas-controls,
+  .atlas-search-box,
+  .atlas-scale-bar,
+  .atlas-legend {
+    font-size: 13px;
+  }
+
+  .atlas-btn {
+    min-width: 36px;
+    height: 36px;
+  }
+
+  .atlas-controls.atlas-top-left,
+  .atlas-controls.atlas-top-right,
+  .atlas-controls.atlas-bottom-left,
+  .atlas-controls.atlas-bottom-right {
+    gap: 6px;
+  }
+}
+
+/* Mobile devices */
+@media (max-width: 768px) {
+  :root {
+    --atlas-border-radius: 6px;
+  }
+
+  .atlas-controls.atlas-top-left,
+  .atlas-controls.atlas-top-right,
+  .atlas-controls.atlas-bottom-left,
+  .atlas-controls.atlas-bottom-right {
+    top: 12px;
+    right: 12px;
+    bottom: 12px;
+    left: 12px;
+    gap: 6px;
+  }
+
+  .atlas-btn {
+    min-width: 36px;
+    height: 36px;
+    font-size: 13px;
+    padding: 6px 10px;
+  }
+
+  .atlas-btn.atlas-btn-lg {
+    min-width: 44px;
+    height: 44px;
+  }
+
+  .atlas-search-box {
+    min-width: 200px;
+    font-size: 13px;
+  }
+
+  .atlas-search-box input {
+    min-width: 100px;
+  }
+
+  .atlas-popup {
+    min-width: 160px;
+    max-width: 250px;
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+
+  .atlas-popup-header {
+    font-size: 13px;
+  }
+
+  .atlas-popup-content {
+    font-size: 12px;
+  }
+
+  .atlas-sidebar {
+    width: 100%;
+    max-width: 260px;
+  }
+
+  .atlas-sidebar-content {
+    padding: 12px;
+  }
+
+  .atlas-scale-bar,
+  .atlas-legend {
+    max-width: 240px;
+    font-size: 12px;
+    padding: 12px;
+    bottom: 12px;
+    left: 12px;
+  }
+
+  .atlas-legend {
+    max-height: 350px;
+  }
+
+  .atlas-list-item {
+    padding: 10px;
+  }
+
+  .atlas-list-item:hover {
+    padding-left: 12px;
+  }
+
+  /* Larger touch targets */
+  .atlas-btn,
+  .atlas-search-btn,
+  .atlas-popup-close,
+  .atlas-sidebar-close {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* Hide elements on very small screens */
+  .atlas-hide-mobile {
+    display: none !important;
+  }
+}
+
+/* Small phones */
+@media (max-width: 480px) {
+  .atlas-popup {
+    min-width: 140px;
+    max-width: 220px;
+    padding: 8px 10px;
+    font-size: 11px;
+  }
+
+  .atlas-popup-header {
+    font-size: 12px;
+    margin-bottom: 6px;
+  }
+
+  .atlas-popup-content {
+    font-size: 11px;
+  }
+
+  .atlas-search-box {
+    min-width: 160px;
+    font-size: 12px;
+  }
+
+  .atlas-search-box input {
+    min-width: 80px;
+    font-size: 12px;
+  }
+
+  .atlas-scale-bar,
+  .atlas-legend {
+    max-width: 200px;
+    font-size: 11px;
+    padding: 10px;
+  }
+
+  .atlas-legend-title {
+    font-size: 12px;
+  }
+
+  .atlas-legend-item-label {
+    font-size: 11px;
+  }
+
+  .atlas-sidebar {
+    max-width: 240px;
+  }
+
+  .atlas-sidebar-title {
+    font-size: 14px;
+  }
+
+  .atlas-list-item {
+    padding: 8px;
+  }
+
+  .atlas-list-item-icon {
+    width: 28px;
+    height: 28px;
+    font-size: 14px;
+  }
+
+  .atlas-list-item-title {
+    font-size: 13px;
+  }
+
+  .atlas-list-item-subtitle {
+    font-size: 11px;
+  }
+}
+
+/* Landscape mode adjustments */
+@media (max-height: 500px) {
+  .atlas-controls.atlas-top-left,
+  .atlas-controls.atlas-top-right,
+  .atlas-controls.atlas-bottom-left,
+  .atlas-controls.atlas-bottom-right {
+    gap: 4px;
+  }
+
+  .atlas-btn {
+    min-width: 32px;
+    height: 32px;
+    font-size: 12px;
+  }
+
+  .atlas-legend {
+    max-height: 250px;
+  }
+}
+
+/* ============================================
+   DARK MODE (Optional)
+   ============================================ */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --atlas-background: #1e1e1e;
+    --atlas-text-color: #e0e0e0;
+    --atlas-border-color: #333333;
+  }
+
+  .atlas-container {
+    background: var(--atlas-background);
+    color: var(--atlas-text-color);
+  }
+
+  .atlas-btn {
+    background: #2a2a2a;
+    color: var(--atlas-text-color);
+    border-color: var(--atlas-border-color);
+  }
+
+  .atlas-btn:hover:not(:disabled) {
+    background: var(--atlas-secondary-color);
+    color: var(--atlas-background);
+  }
+
+  .atlas-search-box {
+    background: #2a2a2a;
+    border-color: var(--atlas-border-color);
+  }
+
+  .atlas-search-box input {
+    color: var(--atlas-text-color);
+    background: transparent;
+  }
+
+  .atlas-search-box input::placeholder {
+    color: #666;
+  }
+
+  .atlas-search-btn {
+    color: var(--atlas-text-color);
+  }
+
+  .atlas-popup,
+  .atlas-sidebar,
+  .atlas-scale-bar,
+  .atlas-legend {
+    background: #2a2a2a;
+    border-color: var(--atlas-border-color);
+  }
+
+  .atlas-list-item:hover {
+    background: #333333;
+  }
+
+  .atlas-list-item-icon {
+    background: #333333;
+  }
+
+  .atlas-tooltip {
+    background: rgba(255, 255, 255, 0.2);
+    color: var(--atlas-text-color);
+  }
+}
+
+/* ============================================
+   ACCESSIBILITY
+   ============================================ */
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* High contrast mode */
+@media (prefers-contrast: more) {
+  .atlas-btn {
+    border-width: 2px;
+  }
+
+  .atlas-popup,
+  .atlas-sidebar,
+  .atlas-legend {
+    border-width: 2px;
+  }
+}
+
+/* Focus visible for keyboard navigation */
+.atlas-btn:focus-visible,
+.atlas-search-btn:focus-visible,
+.atlas-sidebar-close:focus-visible,
+.atlas-popup-close:focus-visible {
+  outline: 3px solid var(--atlas-accent-color);
+  outline-offset: 2px;
+}
+
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+
+.atlas-hidden {
+  display: none !important;
+}
+
+.atlas-visible {
+  display: block !important;
+}
+
+.atlas-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.atlas-no-scroll {
+  overflow: hidden;
+}
+
+.atlas-text-center {
+  text-align: center;
+}
+
+.atlas-text-left {
+  text-align: left;
+}
+
+.atlas-text-right {
+  text-align: right;
+}
+
+.atlas-mt-xs {
+  margin-top: 4px;
+}
+
+.atlas-mt-sm {
+  margin-top: 8px;
+}
+
+.atlas-mt-md {
+  margin-top: 12px;
+}
+
+.atlas-mt-lg {
+  margin-top: 16px;
+}
+
+.atlas-mb-xs {
+  margin-bottom: 4px;
+}
+
+.atlas-mb-sm {
+  margin-bottom: 8px;
+}
+
+.atlas-mb-md {
+  margin-bottom: 12px;
+}
+
+.atlas-mb-lg {
+  margin-bottom: 16px;
+}
+
+.atlas-p-xs {
+  padding: 4px;
+}
+
+.atlas-p-sm {
+  padding: 8px;
+}
+
+.atlas-p-md {
+  padding: 12px;
+}
+
+.atlas-p-lg {
+  padding: 16px;
+}
+
+/* ============================================
+   SCROLLBAR STYLING (Webkit browsers)
+   ============================================ */
+
+.atlas-sidebar::-webkit-scrollbar,
+.atlas-legend::-webkit-scrollbar {
+  width: 8px;
+}
+
+.atlas-sidebar::-webkit-scrollbar-track,
+.atlas-legend::-webkit-scrollbar-track {
+  background: var(--atlas-border-color);
+  border-radius: 4px;
+}
+
+.atlas-sidebar::-webkit-scrollbar-thumb,
+.atlas-legend::-webkit-scrollbar-thumb {
+  background: var(--atlas-secondary-color);
+  border-radius: 4px;
+}
+
+.atlas-sidebar::-webkit-scrollbar-thumb:hover,
+.atlas-legend::-webkit-scrollbar-thumb:hover {
+  background: var(--atlas-accent-color);
+}
