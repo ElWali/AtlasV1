@@ -76,27 +76,59 @@
     };
 
     // --- NEW: Projection System ---
-    // Base Projection Class
+    /**
+     * Base class for projections. Defines the interface for transforming between
+     * geographical coordinates (latitude, longitude) and projected coordinates (x, y).
+     * @class Projection
+     */
     class Projection {
-      // Transforms a geographical coordinate (lat, lon) into a 2D point (x, y) in the projection's coordinate space.
+      /**
+       * Transforms a geographical coordinate (lat, lon) into a 2D point (x, y)
+       * in the projection's coordinate space.
+       * @param {object} latlng - The geographical coordinate.
+       * @param {number} latlng.lat - The latitude.
+       * @param {number} latlng.lon - The longitude.
+       * @returns {object} The projected point.
+       * @throws {Error} If the method is not implemented by a subclass.
+       */
       project(latlng) {
         throw new Error('project() must be implemented by subclass');
       }
 
-      // Transforms a 2D point (x, y) in the projection's coordinate space back into a geographical coordinate (lat, lon).
+      /**
+       * Transforms a 2D point (x, y) in the projection's coordinate space back
+       * into a geographical coordinate (lat, lon).
+       * @param {object} point - The projected point.
+       * @param {number} point.x - The x-coordinate.
+       * @param {number} point.y - The y-coordinate.
+       * @returns {object} The geographical coordinate.
+       * @throws {Error} If the method is not implemented by a subclass.
+       */
       unproject(point) {
         throw new Error('unproject() must be implemented by subclass');
       }
     }
 
-    // Web Mercator Projection (EPSG:3857)
-    // This is the standard projection used by most web maps (Google Maps, OpenStreetMap, etc.).
+    /**
+     * Implements the Web Mercator projection (EPSG:3857), the standard for most web maps.
+     * @class WebMercatorProjection
+     * @extends Projection
+     */
     class WebMercatorProjection extends Projection {
+      /**
+       * Creates an instance of WebMercatorProjection.
+       */
       constructor() {
         super();
       }
 
-      // Converts a LatLng object to a Point in Web Mercator meters.
+      /**
+       * Converts a LatLng object to a Point in Web Mercator meters.
+       * @param {object} latlng - The geographical coordinate.
+       * @param {number} latlng.lat - The latitude.
+       * @param {number} latlng.lon - The longitude.
+       * @returns {object} The projected point in meters.
+       */
       project(latlng) {
         const d = EARTH_RADIUS;
         const maxLat = MAX_LATITUDE;
@@ -108,7 +140,13 @@
         };
       }
 
-      // Converts a Point in Web Mercator meters back to a LatLng object.
+      /**
+       * Converts a Point in Web Mercator meters back to a LatLng object.
+       * @param {object} point - The projected point in meters.
+       * @param {number} point.x - The x-coordinate.
+       * @param {number} point.y - The y-coordinate.
+       * @returns {object} The geographical coordinate.
+       */
       unproject(point) {
         const d = EARTH_RADIUS;
         return {
@@ -117,8 +155,15 @@
         };
       }
 
-      // Converts a LatLng object to a Tile coordinate at a specific zoom level.
-      // This is a convenience method that chains project() and the scale calculation.
+      /**
+       * Converts a LatLng object to a Tile coordinate at a specific zoom level.
+       * This is a convenience method that chains project() and the scale calculation.
+       * @param {object} latlng - The geographical coordinate.
+       * @param {number} latlng.lat - The latitude.
+       * @param {number} latlng.lon - The longitude.
+       * @param {number} zoom - The zoom level.
+       * @returns {object} The tile coordinate.
+       */
       latLngToTile(latlng, zoom) {
         const scale = Math.pow(2, zoom);
         const projected = this.project(latlng);
@@ -128,8 +173,14 @@
         };
       }
 
-      // Converts a Tile coordinate at a specific zoom level back to a LatLng object.
-      // This is a convenience method that chains the scale calculation and unproject().
+      /**
+       * Converts a Tile coordinate at a specific zoom level back to a LatLng object.
+       * This is a convenience method that chains the scale calculation and unproject().
+       * @param {number} x - The x-coordinate of the tile.
+       * @param {number} y - The y-coordinate of the tile.
+       * @param {number} zoom - The zoom level.
+       * @returns {object} The geographical coordinate.
+       */
       tileToLatLng(x, y, zoom) {
         const scale = Math.pow(2, zoom);
         const projected = {
@@ -143,39 +194,97 @@
     // Create a global instance of the default projection.
     const DEFAULT_PROJECTION = new WebMercatorProjection();
 
-    // --- GIS Utility Class (Updated to use Projection) ---
+    /**
+     * A utility class for Geographical Information System (GIS) functions.
+     * @class GISUtils
+     */
     class GISUtils {
+      /**
+       * Converts degrees to radians.
+       * @param {number} d - The angle in degrees.
+       * @returns {number} The angle in radians.
+       */
       static toRadians(d) { return d * Math.PI / 180; }
+
+      /**
+       * Converts radians to degrees.
+       * @param {number} r - The angle in radians.
+       * @returns {number} The angle in degrees.
+       */
       static toDegrees(r) { return r * 180 / Math.PI; }
+
+      /**
+       * Wraps a longitude value to the range [-180, 180].
+       * @param {number} l - The longitude value.
+       * @returns {number} The wrapped longitude.
+       */
       static wrapLongitude(l) {
         while (l > 180) l -= 360;
         while (l < -180) l += 360;
         return l;
       }
+
+      /**
+       * Clamps a latitude value to the valid range.
+       * @param {number} lat - The latitude value.
+       * @returns {number} The clamped latitude.
+       */
       static clampLatitude(lat) {
         return Math.max(MIN_LATITUDE, Math.min(MAX_LATITUDE, lat));
       }
+
+      /**
+       * Calculates the map resolution in meters per pixel.
+       * @param {number} lat - The latitude.
+       * @param {number} z - The zoom level.
+       * @returns {number} The resolution.
+       */
       static getResolution(lat, z) {
         return (EARTH_CIRCUMFERENCE * Math.cos(this.toRadians(lat))) / (Math.pow(2, z) * TILE_SIZE);
       }
+
+      /**
+       * Formats a distance in meters to a human-readable string.
+       * @param {number} m - The distance in meters.
+       * @returns {string} The formatted distance.
+       */
       static formatDistance(m) {
         return m < 1000 ? Math.round(m) + " m" : (m / 1000).toFixed(1) + " km";
       }
 
-      // This method is now a wrapper around the projection's method for backward compatibility.
+      /**
+       * This method is now a wrapper around the projection's method for backward compatibility.
+       * @param {number} x - The x-coordinate of the tile.
+       * @param {number} y - The y-coordinate of the tile.
+       * @param {number} z - The zoom level.
+       * @returns {object} The geographical coordinate.
+       * @deprecated
+       */
       static tileToLonLat(x, y, z) {
         return DEFAULT_PROJECTION.tileToLatLng(x, y, z);
       }
     }
 
-    // --- Base Layer Class ---
+    /**
+     * Base class for all layer types.
+     * @class Layer
+     */
     class Layer {
+      /**
+       * Creates an instance of Layer.
+       * @param {object} [options={}] - The layer options.
+       */
       constructor(options = {}) {
         this.options = options;
         this._map = null;
         this._events = {};
       }
 
+      /**
+       * Adds the layer to the given map.
+       * @param {Atlas} map - The map instance.
+       * @returns {Layer} The current layer instance.
+       */
       addTo(map) {
         if (this._map) {
           this._map.removeLayer(this);
@@ -185,6 +294,10 @@
         return this;
       }
 
+      /**
+       * Removes the layer from the map.
+       * @returns {Layer} The current layer instance.
+       */
       remove() {
         if (this._map) {
           this._map.removeLayer(this);
@@ -193,6 +306,12 @@
         return this;
       }
 
+      /**
+       * Adds an event listener to the layer.
+       * @param {string} type - The event type.
+       * @param {Function} fn - The event listener function.
+       * @returns {Layer} The current layer instance.
+       */
       on(type, fn) {
         if (!this._events[type]) {
           this._events[type] = [];
@@ -201,6 +320,12 @@
         return this;
       }
 
+      /**
+       * Removes an event listener from the layer.
+       * @param {string} type - The event type.
+       * @param {Function} [fn] - The event listener function. If not provided, all listeners for the type are removed.
+       * @returns {Layer} The current layer instance.
+       */
       off(type, fn) {
         if (!this._events[type]) return this;
         if (!fn) {
@@ -211,6 +336,11 @@
         return this;
       }
 
+      /**
+       * Fires an event on the layer.
+       * @param {string} type - The event type.
+       * @param {object} [data={}] - The event data.
+       */
       fire(type, data = {}) {
         if (!this._events[type]) return;
         data.type = type;
@@ -218,13 +348,33 @@
         this._events[type].forEach(fn => fn(data));
       }
 
+      /**
+       * Called when the layer is added to the map.
+       */
       onAdd() { }
+
+      /**
+       * Called when the layer is removed from the map.
+       */
       onRemove() { }
+
+      /**
+       * Renders the layer on the map.
+       */
       render() { }
     }
 
-    // --- TileLayer Class (Updated to use Projection) ---
+    /**
+     * A layer for displaying tiled map data.
+     * @class TileLayer
+     * @extends Layer
+     */
     class TileLayer extends Layer {
+      /**
+       * Creates an instance of TileLayer.
+       * @param {string} urlTemplate - The URL template for the tiles.
+       * @param {object} [options={}] - The tile layer options.
+       */
       constructor(urlTemplate, options = {}) {
         super(options);
         this.urlTemplate = urlTemplate;
@@ -496,10 +646,16 @@
         this._preloadAdjacentZoomTiles();
       }
 
+      /**
+       * Called when the layer is added to the map.
+       */
       onAdd() {
         this.fire('add');
       }
 
+      /**
+       * Called when the layer is removed from the map.
+       */
       onRemove() {
         for (const controller of this.loadingControllers.values()) {
           controller.abort();
@@ -510,25 +666,50 @@
         this.fire('remove');
       }
 
+      /**
+       * Gets the attribution text for the layer.
+       * @returns {string} The attribution text.
+       */
       getAttribution() {
         return this.options.attribution;
       }
 
+      /**
+       * Gets the background color of the layer.
+       * @returns {string} The background color.
+       */
       getBackground() {
         return this.options.background;
       }
 
+      /**
+       * Gets the minimum zoom level for the layer.
+       * @returns {number} The minimum zoom level.
+       */
       getMinZoom() {
         return this.options.minZoom;
       }
 
+      /**
+       * Gets the maximum zoom level for the layer.
+       * @returns {number} The maximum zoom level.
+       */
       getMaxZoom() {
         return this.options.maxZoom;
       }
     }
 
-    // --- GeoJSONLayer Class (Updated to use Projection) ---
+    /**
+     * A layer for displaying GeoJSON data.
+     * @class GeoJSONLayer
+     * @extends Layer
+     */
     class GeoJSONLayer extends Layer {
+      /**
+       * Creates an instance of GeoJSONLayer.
+       * @param {object} geojson - The GeoJSON data.
+       * @param {object} [options={}] - The GeoJSON layer options.
+       */
       constructor(geojson, options = {}) {
         super(options);
         this._geojson = this._normalizeGeoJSON(geojson);
@@ -809,6 +990,9 @@
         }
       }
 
+      /**
+       * Called when the layer is added to the map.
+       */
       onAdd() {
         this._features = this._geojson.features || [];
         if (this.options.interactive) {
@@ -819,6 +1003,9 @@
         this.fire('add');
       }
 
+      /**
+       * Called when the layer is removed from the map.
+       */
       onRemove() {
         if (this.options.interactive) {
           this._map.canvas.removeEventListener('mousemove', this._onMouseMove);
@@ -868,6 +1055,11 @@
         }
       }
 
+      /**
+       * Sets the GeoJSON data for the layer.
+       * @param {object} geojson - The GeoJSON data.
+       * @returns {GeoJSONLayer} The current layer instance.
+       */
       setData(geojson) {
         this._geojson = this._normalizeGeoJSON(geojson);
         this._features = this._geojson.features || [];
@@ -879,13 +1071,24 @@
         return this;
       }
 
+      /**
+       * Gets the GeoJSON data for the layer.
+       * @returns {object} The GeoJSON data.
+       */
       getData() {
         return this._geojson;
       }
     }
 
-    // --- Base Control Class ---
+    /**
+     * Base class for all controls.
+     * @class Control
+     */
     class Control {
+      /**
+       * Creates an instance of Control.
+       * @param {object} [options={}] - The control options.
+       */
       constructor(options = {}) {
         this.options = {
           position: options.position || 'top-left'
@@ -895,6 +1098,12 @@
         this._events = {};
       }
 
+      /**
+       * Adds an event listener to the control.
+       * @param {string} type - The event type.
+       * @param {Function} fn - The event listener function.
+       * @returns {Control} The current control instance.
+       */
       on(type, fn) {
         if (!this._events[type]) {
           this._events[type] = [];
@@ -903,6 +1112,12 @@
         return this;
       }
 
+      /**
+       * Removes an event listener from the control.
+       * @param {string} type - The event type.
+       * @param {Function} [fn] - The event listener function. If not provided, all listeners for the type are removed.
+       * @returns {Control} The current control instance.
+       */
       off(type, fn) {
         if (!this._events[type]) return this;
         if (!fn) {
@@ -913,6 +1128,11 @@
         return this;
       }
 
+      /**
+       * Fires an event on the control.
+       * @param {string} type - The event type.
+       * @param {object} [data={}] - The event data.
+       */
       fire(type, data = {}) {
         if (!this._events[type]) return;
         data.type = type;
@@ -920,13 +1140,25 @@
         this._events[type].forEach(fn => fn(data));
       }
 
+      /**
+       * Called when the control is added to the map.
+       * @returns {HTMLElement} The control's container element.
+       */
       onAdd() {
         return document.createElement('div');
       }
 
+      /**
+       * Called when the control is removed from the map.
+       */
       onRemove() {
       }
 
+      /**
+       * Adds the control to the given map.
+       * @param {Atlas} map - The map instance.
+       * @returns {Control} The current control instance.
+       */
       addTo(map) {
         this.remove();
         this._map = map;
@@ -936,6 +1168,10 @@
         return this;
       }
 
+      /**
+       * Removes the control from the map.
+       * @returns {Control} The current control instance.
+       */
       remove() {
         if (!this._map) return this;
         this.onRemove();
@@ -947,6 +1183,10 @@
         return this;
       }
 
+      /**
+       * Gets the control's container element.
+       * @returns {HTMLElement} The container element.
+       */
       getContainer() {
         return this._container;
       }
@@ -973,8 +1213,16 @@
       }
     }
 
-    // --- Concrete Control Classes ---
+    /**
+     * A control for zooming in and out.
+     * @class ZoomControl
+     * @extends Control
+     */
     class ZoomControl extends Control {
+      /**
+       * Creates an instance of ZoomControl.
+       * @param {object} [options={}] - The control options.
+       */
       constructor(options = {}) {
         super(options);
         this.options = {
@@ -984,6 +1232,10 @@
         };
       }
 
+      /**
+       * Called when the control is added to the map.
+       * @returns {HTMLElement} The control's container element.
+       */
       onAdd() {
         const container = document.createElement('div');
         container.className = 'atlas-zoom-control';
@@ -1035,7 +1287,16 @@
       }
     }
 
+    /**
+     * A control for toggling between base layers.
+     * @class LayerControl
+     * @extends Control
+     */
     class LayerControl extends Control {
+      /**
+       * Creates an instance of LayerControl.
+       * @param {object} [options={}] - The control options.
+       */
       constructor(options = {}) {
         super(options);
         this.options = {
@@ -1044,6 +1305,10 @@
         };
       }
 
+      /**
+       * Called when the control is added to the map.
+       * @returns {HTMLElement} The control's container element.
+       */
       onAdd() {
         const container = document.createElement('div');
         container.className = 'atlas-layer-control';
@@ -1077,7 +1342,16 @@
       }
     }
 
+    /**
+     * A control for toggling fullscreen mode.
+     * @class FullscreenControl
+     * @extends Control
+     */
     class FullscreenControl extends Control {
+      /**
+       * Creates an instance of FullscreenControl.
+       * @param {object} [options={}] - The control options.
+       */
       constructor(options = {}) {
         super(options);
         this.options = {
@@ -1086,6 +1360,10 @@
         };
       }
 
+      /**
+       * Called when the control is added to the map.
+       * @returns {HTMLElement} The control's container element.
+       */
       onAdd() {
         const container = document.createElement('div');
         container.className = 'atlas-fullscreen-control';
@@ -1117,7 +1395,16 @@
       }
     }
 
+    /**
+     * A control for displaying a scale bar.
+     * @class ScaleControl
+     * @extends Control
+     */
     class ScaleControl extends Control {
+      /**
+       * Creates an instance of ScaleControl.
+       * @param {object} [options={}] - The control options.
+       */
       constructor(options = {}) {
         super(options);
         this.options = {
@@ -1127,6 +1414,10 @@
         };
       }
 
+      /**
+       * Called when the control is added to the map.
+       * @returns {HTMLElement} The control's container element.
+       */
       onAdd() {
         const container = document.createElement('div');
         container.className = 'atlas-scale-control scale-bar-container';
@@ -1183,7 +1474,16 @@
       }
     }
 
+    /**
+     * A control for displaying map attribution.
+     * @class AttributionControl
+     * @extends Control
+     */
     class AttributionControl extends Control {
+      /**
+       * Creates an instance of AttributionControl.
+       * @param {object} [options={}] - The control options.
+       */
       constructor(options = {}) {
         super(options);
         this.options = {
@@ -1192,6 +1492,10 @@
         };
       }
 
+      /**
+       * Called when the control is added to the map.
+       * @returns {HTMLElement} The control's container element.
+       */
       onAdd() {
         const container = document.createElement('div');
         container.className = 'atlas-attribution-control';
@@ -1211,7 +1515,16 @@
       }
     }
 
+    /**
+     * A control for displaying a compass.
+     * @class CompassControl
+     * @extends Control
+     */
     class CompassControl extends Control {
+      /**
+       * Creates an instance of CompassControl.
+       * @param {object} [options={}] - The control options.
+       */
       constructor(options = {}) {
         super(options);
         this.options = {
@@ -1220,6 +1533,10 @@
         };
       }
 
+      /**
+       * Called when the control is added to the map.
+       * @returns {HTMLElement} The control's container element.
+       */
       onAdd() {
         const container = document.createElement('div');
         container.className = 'atlas-compass-control';
@@ -1262,7 +1579,16 @@
       }
     }
 
+    /**
+     * A control for resetting the zoom to the default level.
+     * @class ResetZoomControl
+     * @extends Control
+     */
     class ResetZoomControl extends Control {
+      /**
+       * Creates an instance of ResetZoomControl.
+       * @param {object} [options={}] - The control options.
+       */
       constructor(options = {}) {
         super(options);
         this.options = {
@@ -1271,6 +1597,10 @@
         };
       }
 
+      /**
+       * Called when the control is added to the map.
+       * @returns {HTMLElement} The control's container element.
+       */
       onAdd() {
         const container = document.createElement('div');
         container.className = 'atlas-reset-zoom-control';
@@ -1303,7 +1633,15 @@
       }
     }
 
+    /**
+     * A control for displaying notifications on the map.
+     * @class NotificationControl
+     */
     class NotificationControl {
+        /**
+         * Creates an instance of NotificationControl.
+         * @param {Atlas} map - The map instance.
+         */
         constructor(map) {
             this._map = map;
             this._container = map.container.querySelector('.atlas-notification-container');
@@ -1314,6 +1652,11 @@
             }
         }
 
+        /**
+         * Shows a notification on the map.
+         * @param {string} message - The message to display.
+         * @param {number} [duration=5000] - The duration in milliseconds to show the notification.
+         */
         show(message, duration = 5000) {
             const notification = document.createElement('div');
             notification.className = 'atlas-notification';
@@ -1327,14 +1670,25 @@
         }
     }
 
-    // --- Base Handler Class ---
+    /**
+     * Base class for all map interaction handlers.
+     * @class Handler
+     */
     class Handler {
+      /**
+       * Creates an instance of Handler.
+       * @param {Atlas} map - The map instance.
+       */
       constructor(map) {
         this._map = map;
         this._enabled = false;
         this._eventListeners = {};
       }
 
+      /**
+       * Enables the handler.
+       * @returns {Handler} The current handler instance.
+       */
       enable() {
         if (this._enabled) return this;
         this._enabled = true;
@@ -1342,6 +1696,10 @@
         return this;
       }
 
+      /**
+       * Disables the handler.
+       * @returns {Handler} The current handler instance.
+       */
       disable() {
         if (!this._enabled) return this;
         this._enabled = false;
@@ -1349,10 +1707,18 @@
         return this;
       }
 
+      /**
+       * Toggles the handler.
+       * @returns {Handler} The current handler instance.
+       */
       toggle() {
         return this._enabled ? this.disable() : this.enable();
       }
 
+      /**
+       * Checks if the handler is enabled.
+       * @returns {boolean} True if the handler is enabled, false otherwise.
+       */
       isEnabled() {
         return this._enabled;
       }
@@ -1371,8 +1737,16 @@
       }
     }
 
-    // --- Concrete Handler Classes ---
+    /**
+     * Handles map panning via drag events.
+     * @class DragPanHandler
+     * @extends Handler
+     */
     class DragPanHandler extends Handler {
+      /**
+       * Creates an instance of DragPanHandler.
+       * @param {Atlas} map - The map instance.
+       */
       constructor(map) {
         super(map);
         this._isDragging = false;
@@ -1525,7 +1899,16 @@
       }
     }
 
+    /**
+     * Handles map zooming via scroll events.
+     * @class ScrollZoomHandler
+     * @extends Handler
+     */
     class ScrollZoomHandler extends Handler {
+      /**
+       * Creates an instance of ScrollZoomHandler.
+       * @param {Atlas} map - The map instance.
+       */
       constructor(map) {
         super(map);
       }
@@ -1545,7 +1928,16 @@
       }
     }
 
+    /**
+     * Handles map zooming via double-click events.
+     * @class DoubleClickZoomHandler
+     * @extends Handler
+     */
     class DoubleClickZoomHandler extends Handler {
+      /**
+       * Creates an instance of DoubleClickZoomHandler.
+       * @param {Atlas} map - The map instance.
+       */
       constructor(map) {
         super(map);
         this._lastClickTime = 0;
@@ -1566,7 +1958,16 @@
       }
     }
 
+    /**
+     * Handles map zooming and rotation via touch events.
+     * @class TouchZoomRotateHandler
+     * @extends Handler
+     */
     class TouchZoomRotateHandler extends Handler {
+      /**
+       * Creates an instance of TouchZoomRotateHandler.
+       * @param {Atlas} map - The map instance.
+       */
       constructor(map) {
         super(map);
         this._isPinching = false;
@@ -1659,7 +2060,16 @@
       }
     }
 
+    /**
+     * Handles map panning via keyboard events.
+     * @class KeyboardPanHandler
+     * @extends Handler
+     */
     class KeyboardPanHandler extends Handler {
+      /**
+       * Creates an instance of KeyboardPanHandler.
+       * @param {Atlas} map - The map instance.
+       */
       constructor(map) {
         super(map);
       }
@@ -1723,8 +2133,15 @@
       }
     }
 
-    // --- PROFESSIONAL OVERLAY SYSTEM ---
+    /**
+     * Manages the state of popups on the map.
+     * @class PopupManager
+     */
     class PopupManager {
+      /**
+       * Creates an instance of PopupManager.
+       * @param {Atlas} map - The map instance.
+       */
       constructor(map) {
         this._map = map;
         this._openPopup = null;
@@ -1765,6 +2182,10 @@
         this._openPopup.close();
       }
 
+      /**
+       * Sets the currently open popup.
+       * @param {AtlasPopup} popup - The popup to set as open.
+       */
       setOpenPopup(popup) {
         if (this._openPopup === popup) return;
 
@@ -1775,29 +2196,54 @@
         this._openPopup = popup;
       }
 
+      /**
+       * Gets the currently open popup.
+       * @returns {AtlasPopup} The open popup.
+       */
       getOpenPopup() {
         return this._openPopup;
       }
 
+      /**
+       * Clears the currently open popup if it matches the given popup.
+       * @param {AtlasPopup} popup - The popup to clear.
+       */
       clearOpenPopup(popup) {
         if (this._openPopup === popup) {
           this._openPopup = null;
         }
       }
 
+      /**
+       * Destroys the popup manager and removes its event listeners.
+       */
       destroy() {
         this._teardownGlobalListeners();
         this._openPopup = null;
       }
     }
 
+    /**
+     * Base class for all overlay types.
+     * @class Overlay
+     */
     class Overlay {
+      /**
+       * Creates an instance of Overlay.
+       * @param {object} [options={}] - The overlay options.
+       */
       constructor(options = {}) {
         this.options = options;
         this._map = null;
         this._events = {};
       }
 
+      /**
+       * Adds an event listener to the overlay.
+       * @param {string} type - The event type.
+       * @param {Function} fn - The event listener function.
+       * @returns {Overlay} The current overlay instance.
+       */
       on(type, fn) {
         if (!this._events[type]) {
           this._events[type] = [];
@@ -1806,6 +2252,12 @@
         return this;
       }
 
+      /**
+       * Removes an event listener from the overlay.
+       * @param {string} type - The event type.
+       * @param {Function} [fn] - The event listener function. If not provided, all listeners for the type are removed.
+       * @returns {Overlay} The current overlay instance.
+       */
       off(type, fn) {
         if (!this._events[type]) return this;
         if (!fn) {
@@ -1816,6 +2268,11 @@
         return this;
       }
 
+      /**
+       * Fires an event on the overlay.
+       * @param {string} type - The event type.
+       * @param {object} [data={}] - The event data.
+       */
       fire(type, data = {}) {
         if (!this._events[type]) return;
         data.type = type;
@@ -1823,6 +2280,11 @@
         this._events[type].forEach(fn => fn(data));
       }
 
+      /**
+       * Adds the overlay to the given map.
+       * @param {Atlas} map - The map instance.
+       * @returns {Overlay} The current overlay instance.
+       */
       addTo(map) {
         if (this._map) {
           this._map.removeOverlay(this);
@@ -1832,6 +2294,10 @@
         return this;
       }
 
+      /**
+       * Removes the overlay from the map.
+       * @returns {Overlay} The current overlay instance.
+       */
       remove() {
         if (this._map) {
           this._map.removeOverlay(this);
@@ -1840,12 +2306,35 @@
         return this;
       }
 
+      /**
+       * Called when the overlay is added to the map.
+       */
       onAdd() { }
+
+      /**
+       * Called when the overlay is removed from the map.
+       */
       onRemove() { }
+
+      /**
+       * Renders the overlay on the map.
+       */
       render() { }
     }
 
+    /**
+     * A marker that can be placed on the map.
+     * @class AtlasMarker
+     * @extends Overlay
+     */
     class AtlasMarker extends Overlay {
+      /**
+       * Creates an instance of AtlasMarker.
+       * @param {object} latlng - The geographical coordinate of the marker.
+       * @param {number} latlng.lat - The latitude.
+       * @param {number} latlng.lon - The longitude.
+       * @param {object} [options={}] - The marker options.
+       */
       constructor(latlng, options = {}) {
         super(options);
 
@@ -1865,6 +2354,9 @@
         };
       }
 
+      /**
+       * Called when the marker is added to the map.
+       */
       onAdd() {
         this._iconElement = this._createIcon();
         this._map.container.appendChild(this._iconElement);
@@ -1882,6 +2374,9 @@
         this._updateZIndex();
       }
 
+      /**
+       * Called when the marker is removed from the map.
+       */
       onRemove() {
         if (this._popup) {
           this._popup.remove();
@@ -1895,6 +2390,9 @@
         this._popup = null;
       }
 
+      /**
+       * Renders the marker on the map.
+       */
       render() {
         if (this._iconElement) {
           this._updatePosition();
@@ -2055,6 +2553,13 @@
         this.fire('dragend', { latlng: { ...this._latlng } });
       }
 
+      /**
+       * Sets the geographical coordinate of the marker.
+       * @param {object} latlng - The geographical coordinate.
+       * @param {number} latlng.lat - The latitude.
+       * @param {number} latlng.lon - The longitude.
+       * @returns {AtlasMarker} The current marker instance.
+       */
       setLatLng(latlng) {
         this._latlng = { ...latlng };
         if (this._map) {
@@ -2063,10 +2568,20 @@
         return this;
       }
 
+      /**
+       * Gets the geographical coordinate of the marker.
+       * @returns {object} The geographical coordinate.
+       */
       getLatLng() {
         return { ...this._latlng };
       }
 
+      /**
+       * Binds a popup to the marker.
+       * @param {string|HTMLElement} content - The content of the popup.
+       * @param {object} [options={}] - The popup options.
+       * @returns {AtlasMarker} The current marker instance.
+       */
       bindPopup(content, options = {}) {
         if (this._popup) {
           this._popup.remove();
@@ -2076,6 +2591,10 @@
         return this;
       }
 
+      /**
+       * Unbinds the popup from the marker.
+       * @returns {AtlasMarker} The current marker instance.
+       */
       unbindPopup() {
         if (this._popup) {
           this._popup.remove();
@@ -2084,6 +2603,10 @@
         return this;
       }
 
+      /**
+       * Toggles the popup.
+       * @returns {AtlasMarker} The current marker instance.
+       */
       togglePopup() {
         if (this._popup) {
           if (this._popup._isOpen) {
@@ -2095,6 +2618,10 @@
         return this;
       }
 
+      /**
+       * Opens the popup.
+       * @returns {AtlasMarker} The current marker instance.
+       */
       openPopup() {
         if (this._popup) {
           this._popup.openOn(this);
@@ -2102,6 +2629,10 @@
         return this;
       }
 
+      /**
+       * Closes the popup.
+       * @returns {AtlasMarker} The current marker instance.
+       */
       closePopup() {
         if (this._popup && this._popup._isOpen) {
           this._popup.close();
@@ -2110,7 +2641,17 @@
       }
     }
 
+    /**
+     * A popup that can be opened on the map.
+     * @class AtlasPopup
+     * @extends Overlay
+     */
     class AtlasPopup extends Overlay {
+      /**
+       * Creates an instance of AtlasPopup.
+       * @param {string|HTMLElement} content - The content of the popup.
+       * @param {object} [options={}] - The popup options.
+       */
       constructor(content, options = {}) {
         super(options);
 
@@ -2131,6 +2672,9 @@
         };
       }
 
+      /**
+       * Called when the popup is added to the map.
+       */
       onAdd() {
         this._popupElement = this._createPopupElement();
         this._map.container.appendChild(this._popupElement);
@@ -2150,6 +2694,9 @@
         }
       }
 
+      /**
+       * Called when the popup is removed from the map.
+       */
       onRemove() {
         if (this._popupElement && this._popupElement.parentNode) {
           this._popupElement.parentNode.removeChild(this._popupElement);
@@ -2163,6 +2710,9 @@
         }
       }
 
+      /**
+       * Renders the popup on the map.
+       */
       render() {
         if (!this._isOpen || !this._popupElement) return;
         this._updatePosition();
@@ -2266,6 +2816,11 @@
         this._tipElement.className = 'popup-tip ' + tipClass;
       }
 
+      /**
+       * Opens the popup on the map.
+       * @param {AtlasMarker|object} anchor - The marker or geographical coordinate to anchor the popup to.
+       * @returns {AtlasPopup} The current popup instance.
+       */
       openOn(anchor) {
         this._anchor = anchor;
         this._isOpen = true;
@@ -2282,6 +2837,10 @@
         return this;
       }
 
+      /**
+       * Closes the popup.
+       * @returns {AtlasPopup} The current popup instance.
+       */
       close() {
         this._isOpen = false;
         if (this._popupElement) {
@@ -2300,6 +2859,11 @@
         return this;
       }
 
+      /**
+       * Sets the content of the popup.
+       * @param {string|HTMLElement} content - The new content.
+       * @returns {AtlasPopup} The current popup instance.
+       */
       setContent(content) {
         this._content = content;
         if (this._popupElement) {
@@ -2309,8 +2873,16 @@
       }
     }
 
-    // --- Professional Atlas Class (Updated to use Projection System) ---
+    /**
+     * The main map class.
+     * @class Atlas
+     */
     class Atlas {
+      /**
+       * Creates an instance of Atlas.
+       * @param {string} id - The ID of the canvas element.
+       * @param {object} [options={}] - The map options.
+       */
       constructor(id, options = {}) {
         this.container = document.getElementById("map-container");
         if (!this.container) {
@@ -2381,7 +2953,12 @@
         this.fire('load');
       }
 
-      // --- Map Event System ---
+      /**
+       * Adds an event listener to the map.
+       * @param {string} type - The event type.
+       * @param {Function} fn - The event listener function.
+       * @returns {Atlas} The current map instance.
+       */
       on(type, fn) {
         if (!this._events[type]) {
           this._events[type] = [];
@@ -2390,6 +2967,12 @@
         return this;
       }
 
+      /**
+       * Removes an event listener from the map.
+       * @param {string} type - The event type.
+       * @param {Function} [fn] - The event listener function. If not provided, all listeners for the type are removed.
+       * @returns {Atlas} The current map instance.
+       */
       off(type, fn) {
         if (!this._events[type]) return this;
         if (!fn) {
@@ -2400,6 +2983,11 @@
         return this;
       }
 
+      /**
+       * Fires an event on the map.
+       * @param {string} type - The event type.
+       * @param {object} [data={}] - The event data.
+       */
       fire(type, data = {}) {
         if (!this._events[type]) return;
         data.type = type;
@@ -2407,7 +2995,11 @@
         this._events[type].forEach(fn => fn(data));
       }
 
-      // --- Layer Management ---
+      /**
+       * Adds a layer to the map.
+       * @param {Layer} layer - The layer to add.
+       * @returns {Atlas} The current map instance.
+       */
       addLayer(layer) {
         if (!(layer instanceof Layer)) {
           throw new Error('Argument must be an instance of Layer');
@@ -2425,6 +3017,11 @@
         return this;
       }
 
+      /**
+       * Removes a layer from the map.
+       * @param {Layer} layer - The layer to remove.
+       * @returns {Atlas} The current map instance.
+       */
       removeLayer(layer) {
         const index = this._layers.indexOf(layer);
         if (index !== -1) {
@@ -2442,6 +3039,11 @@
         return this;
       }
 
+      /**
+       * Sets the base layer of the map.
+       * @param {TileLayer} newLayer - The new base layer.
+       * @returns {Atlas} The current map instance.
+       */
       setBaseLayer(newLayer) {
         if (!(newLayer instanceof TileLayer)) {
           throw new Error('Argument must be an instance of TileLayer');
@@ -2460,11 +3062,19 @@
         return this;
       }
 
+      /**
+       * Gets the base layer of the map.
+       * @returns {TileLayer} The base layer.
+       */
       getBaseLayer() {
         return this._baseLayer;
       }
 
-      // --- Control Management ---
+      /**
+       * Adds a control to the map.
+       * @param {Control} control - The control to add.
+       * @returns {Atlas} The current map instance.
+       */
       addControl(control) {
         if (!(control instanceof Control)) {
           throw new Error('Argument must be an instance of Control');
@@ -2474,6 +3084,11 @@
         return this;
       }
 
+      /**
+       * Removes a control from the map.
+       * @param {Control} control - The control to remove.
+       * @returns {Atlas} The current map instance.
+       */
       removeControl(control) {
         const index = this._controls.indexOf(control);
         if (index !== -1) {
@@ -2483,11 +3098,20 @@
         return this;
       }
 
+      /**
+       * Gets all controls on the map.
+       * @returns {Control[]} An array of controls.
+       */
       getControls() {
         return [...this._controls];
       }
 
-      // --- Handler Management ---
+      /**
+       * Adds a handler to the map.
+       * @param {string} name - The name of the handler.
+       * @param {typeof Handler} HandlerClass - The handler class.
+       * @returns {Atlas} The current map instance.
+       */
       addHandler(name, HandlerClass) {
         if (this._handlers[name]) {
           console.warn(`Handler '${name}' already exists.`);
@@ -2498,6 +3122,11 @@
         return this;
       }
 
+      /**
+       * Removes a handler from the map.
+       * @param {string} name - The name of the handler.
+       * @returns {Atlas} The current map instance.
+       */
       removeHandler(name) {
         if (!this._handlers[name]) return this;
         this._handlers[name].destroy();
@@ -2505,27 +3134,50 @@
         return this;
       }
 
+      /**
+       * Gets a handler by name.
+       * @param {string} name - The name of the handler.
+       * @returns {Handler|null} The handler instance or null if not found.
+       */
       getHandler(name) {
         return this._handlers[name] || null;
       }
 
+      /**
+       * Enables a handler.
+       * @param {string} name - The name of the handler.
+       * @returns {Atlas} The current map instance.
+       */
       enableHandler(name) {
         const handler = this.getHandler(name);
         if (handler) handler.enable();
         return this;
       }
 
+      /**
+       * Disables a handler.
+       * @param {string} name - The name of the handler.
+       * @returns {Atlas} The current map instance.
+       */
       disableHandler(name) {
         const handler = this.getHandler(name);
         if (handler) handler.disable();
         return this;
       }
 
+      /**
+       * Gets all handlers on the map.
+       * @returns {object} An object containing all handlers.
+       */
       getHandlers() {
         return { ...this._handlers };
       }
 
-      // --- Overlay Management ---
+      /**
+       * Adds an overlay to the map.
+       * @param {Overlay} overlay - The overlay to add.
+       * @returns {Atlas} The current map instance.
+       */
       addOverlay(overlay) {
         if (!(overlay instanceof Overlay)) {
           throw new Error('Argument must be an instance of Overlay');
@@ -2539,6 +3191,11 @@
         return this;
       }
 
+      /**
+       * Removes an overlay from the map.
+       * @param {Overlay} overlay - The overlay to remove.
+       * @returns {Atlas} The current map instance.
+       */
       removeOverlay(overlay) {
         const index = this._overlays.indexOf(overlay);
         if (index !== -1) {
@@ -2550,11 +3207,18 @@
         return this;
       }
 
+      /**
+       * Gets all overlays on the map.
+       * @returns {Overlay[]} An array of overlays.
+       */
       getOverlays() {
         return [...this._overlays];
       }
 
-      // --- Core Map Methods ---
+      /**
+       * Sets the zoom level of the map.
+       * @param {number} z - The new zoom level.
+       */
       setZoom(z) {
         const minZoom = this._baseLayer ? this._baseLayer.getMinZoom() : 0;
         const maxZoom = this._baseLayer ? this._baseLayer.getMaxZoom() : 18;
@@ -2567,6 +3231,10 @@
         this.fire('zoom');
       }
 
+      /**
+       * Sets the bearing of the map.
+       * @param {number} rad - The new bearing in radians.
+       */
       setBearing(rad) {
         const nr = normalizeAngle(rad);
         if (Math.abs(nr - this.bearing) < 1e-6) return;
@@ -2588,6 +3256,9 @@
         this._inertiaRAF = null;
       }
 
+      /**
+       * Stops all animations.
+       */
       stopAnimations() {
         this.stopInertia();
         if (this._zoomAnim?.raf) cancelAnimationFrame(this._zoomAnim.raf);
@@ -2617,6 +3288,9 @@
         });
       }
 
+      /**
+       * Renders the map.
+       */
       render() {
         this.scheduleRender();
       }
@@ -2674,19 +3348,40 @@
         }
       }
 
+      /**
+       * Gets the center of the map.
+       * @returns {object} The geographical coordinate of the center.
+       */
       getCenter() {
         return { ...this.center };
       }
 
+      /**
+       * Gets the zoom level of the map.
+       * @returns {number} The zoom level.
+       */
       getZoom() {
         return this.zoom;
       }
 
+      /**
+       * Gets the bearing of the map.
+       * @returns {number} The bearing in radians.
+       */
       getBearing() {
         return this.bearing;
       }
 
-      // --- UPDATED: screenToLatLon (now uses Projection) ---
+
+      /**
+       * Converts a screen coordinate to a geographical coordinate.
+       * @param {number} ax - The x-coordinate on the screen.
+       * @param {number} ay - The y-coordinate on the screen.
+       * @param {number} [zoom=this.zoom] - The zoom level.
+       * @param {number} [bearing=this.bearing] - The bearing in radians.
+       * @param {object} [center=this.center] - The center of the map.
+       * @returns {object} The geographical coordinate.
+       */
       screenToLatLon(ax, ay, zoom = this.zoom, bearing = this.bearing, center = this.center) {
         const w = this.canvas.width / this.dpr;
         const h = this.canvas.height / this.dpr;
@@ -2703,13 +3398,23 @@
         };
       }
 
-      // --- UPDATED: lonLatToTile (now uses Projection) ---
-      // This is kept for backward compatibility but delegates to the projection.
+      /**
+       * Converts a geographical coordinate to a tile coordinate.
+       * @param {number} lon - The longitude.
+       * @param {number} lat - The latitude.
+       * @param {number} z - The zoom level.
+       * @returns {object} The tile coordinate.
+       * @deprecated
+       */
       lonLatToTile(lon, lat, z) {
         return this.projection.latLngToTile({ lat, lon }, z);
       }
 
-      // --- UPDATED: latLngToContainerPoint (now uses Projection) ---
+      /**
+       * Converts a geographical coordinate to a container point.
+       * @param {object} latlng - The geographical coordinate.
+       * @returns {object} The container point.
+       */
       latLngToContainerPoint(latlng) {
         const w = this.canvas.width / this.dpr;
         const h = this.canvas.height / this.dpr;
@@ -2773,6 +3478,15 @@
         }, 600);
       }
 
+      /**
+       * Animates the map's zoom and rotation around a given point.
+       * @param {number} ax - The x-coordinate of the anchor point.
+       * @param {number} ay - The y-coordinate of the anchor point.
+       * @param {number} toZoom - The target zoom level.
+       * @param {number} [toBearing=this.bearing] - The target bearing in radians.
+       * @param {number} [duration=WHEEL_ZOOM_DURATION] - The duration of the animation in milliseconds.
+       * @param {Function} [easing=EASING.easeInOutCubic] - The easing function.
+       */
       animateZoomRotateAbout(ax, ay, toZoom, toBearing = this.bearing, duration = WHEEL_ZOOM_DURATION, easing = EASING.easeInOutCubic) {
         this.showZoomIndicator(ax, ay);
         this.stopAnimations();
@@ -2807,6 +3521,15 @@
         this.animateZoomRotateAbout(ax, ay, target, this.bearing, WHEEL_ZOOM_DURATION, EASING.easeInOutCubic);
       }
 
+      /**
+       * Animates the map to a new view.
+       * @param {object} options - The animation options.
+       * @param {object} [options.center] - The new center of the map.
+       * @param {number} [options.zoom] - The new zoom level.
+       * @param {number} [options.bearing] - The new bearing in radians.
+       * @param {number} [options.duration] - The duration of the animation in milliseconds.
+       * @param {Function} [options.easing] - The easing function.
+       */
       flyTo({ center, zoom, bearing, duration, easing } = {}) {
         center = center || this.center;
         zoom = zoom || this.zoom;
@@ -2847,7 +3570,9 @@
         this.fire('movestart');
       }
 
-      // --- Lifecycle ---
+      /**
+       * Destroys the map instance and cleans up its resources.
+       */
       destroy() {
         this.stopAnimations();
 
@@ -2919,6 +3644,9 @@
         atlasInstance.setBaseLayer(TILE_LAYERS.OSM);
     };
 
+    /**
+     * Initializes the Atlas map with the user's location.
+     */
     const initializeAtlas = () => {
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(pos => {
