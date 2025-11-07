@@ -1404,14 +1404,14 @@
       const container = document.createElement('div');
       container.className = 'atlas-attribution-control';
       container.id = 'attribution';
-      container.innerHTML = this.options.prefix;
+      container.textContent = this.options.prefix;
       this._container = container;
       return container;
     }
     _update() {
       if (!this._map || !this._container) return;
       const attribution = this._map.getBaseLayer() ? this._map.getBaseLayer().getAttribution() : '';
-      this._container.innerHTML = this.options.prefix + (this.options.prefix && attribution ? ' | ' : '') + attribution;
+      this._container.textContent = this.options.prefix + (this.options.prefix && attribution ? ' | ' : '') + attribution;
     }
   }
 
