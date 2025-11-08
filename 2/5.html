@@ -217,6 +217,46 @@
   </div>
 
   <script>
+    /**
+     * @typedef {Object} LatLngObject
+     * @property {number} lat - Latitude (-85.05 to 85.05)
+     * @property {number} lon - Longitude (-180 to 180)
+     */
+    /**
+     * @typedef {Object} ZoomLevelObject
+     * @property {number} zoom - Zoom level (0-28)
+     */
+    /**
+     * @typedef {Object} BoundsObject
+     * @property {number} minLat
+     * @property {number} maxLat
+     * @property {number} minLon
+     * @property {number} maxLon
+     */
+    /**
+     * @typedef {Object} ControlOptions
+     * @property {string} position - 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+     */
+    /**
+     * @typedef {Object} TileLayerOptions
+     * @property {number} minZoom
+     * @property {number} maxZoom
+     * @property {string} attribution
+     * @property {string} background
+     * @property {boolean} supportsRetina
+     * @property {number} maxCacheSize
+     * @property {string[]} subdomains
+     */
+    /**
+     * @typedef {Object} StyleObject
+     * @property {string} color
+     * @property {string} fillColor
+     * @property {number} weight
+     * @property {number} opacity
+     * @property {number} fillOpacity
+     * @property {number} radius
+     */
+
     // ============================================================================
     // CONSTANTS AND CONFIGURATION
     // ============================================================================
@@ -487,6 +527,508 @@
     }
 
     // ============================================================================
+    // LOGGER
+    // ============================================================================
+
+    class Logger {
+      static levels = {
+        DEBUG: 0,
+        INFO: 1,
+        WARN: 2,
+        ERROR: 3,
+        SILENT: 4
+      };
+      static level = Logger.levels.INFO;
+      static debug(msg, ...args) {
+        this._log('DEBUG', msg, args);
+      }
+      static info(msg, ...args) {
+        this._log('INFO', msg, args);
+      }
+      static warn(msg, ...args) {
+        this._log('WARN', msg, args);
+      }
+      static error(msg, ...args) {
+        this._log('ERROR', msg, args);
+      }
+      static _log(level, msg, args) {
+        if (Logger.levels[level] < Logger.level) return;
+        const colors = {
+          DEBUG: 'color: #999; font-weight: normal;',
+          INFO: 'color: #0078A8; font-weight: bold;',
+          WARN: 'color: #f39c12; font-weight: bold;',
+          ERROR: 'color: #e74c3c; font-weight: bold;'
+        };
+        console.log(`%c[Atlas ${level}]%c ${msg}`, colors[level], 'color: inherit;', ...args);
+      }
+    }
+
+    // ============================================================================
+    // BOUNDS UTILITY
+    // ============================================================================
+
+    class Bounds {
+      constructor(southWest, northEast) {
+        this._sw = LatLng.from(southWest);
+        this._ne = LatLng.from(northEast);
+      }
+      get southWest() {
+        return this._sw;
+      }
+      get northEast() {
+        return this._ne;
+      }
+      get center() {
+        return new LatLng(
+          (this._sw.lat + this._ne.lat) / 2,
+          (this._sw.lon + this._ne.lon) / 2
+        );
+      }
+      contains(latlng) {
+        latlng = LatLng.from(latlng);
+        return latlng.lat >= this._sw.lat && latlng.lat <= this._ne.lat && latlng.lon >= this._sw.lon && latlng.lon <= this._ne.lon;
+      }
+      intersects(other) {
+        return !(this._ne.lat < other._sw.lat || this._sw.lat > other._ne.lat || this._ne.lon < other._sw.lon || this._sw.lon > other._ne.lon);
+      }
+      expand(percent) {
+        const dLat = (this._ne.lat - this._sw.lat) * percent / 100;
+        const dLon = (this._ne.lon - this._sw.lon) * percent / 100;
+        return new Bounds(
+          [this._sw.lat - dLat, this._sw.lon - dLon],
+          [this._ne.lat + dLat, this._ne.lon + dLon]
+        );
+      }
+    }
+
+    // ============================================================================
+    // MANAGED ABORT CONTROLLER
+    // ============================================================================
+
+    class ManagedAbortController {
+      constructor(timeout = null) {
+        this.controller = new AbortController();
+        this.timeout = timeout;
+        this.timeoutId = null;
+        if (timeout) {
+          this.timeoutId = setTimeout(() => this.abort(), timeout);
+        }
+      }
+      get signal() {
+        return this.controller.signal;
+      }
+      abort(reason) {
+        if (this.timeoutId) clearTimeout(this.timeoutId);
+        this.controller.abort(reason);
+      }
+      isAborted() {
+        return this.controller.signal.aborted;
+      }
+    }
+
+    // ============================================================================
+    // PLUGIN SYSTEM
+    // ============================================================================
+
+    class PluginSystem {
+      constructor() {
+        this.plugins = new Map();
+        this.hooks = new Map();
+      }
+      register(name, plugin) {
+        if (this.plugins.has(name)) {
+          console.warn(`[Atlas] Plugin '${name}' already registered`);
+          return;
+        }
+        if (typeof plugin.init !== 'function') {
+          throw new Error('Plugin must have an init method');
+        }
+        this.plugins.set(name, plugin);
+        console.info(`[Atlas] Plugin '${name}' registered`);
+      }
+      unregister(name) {
+        const plugin = this.plugins.get(name);
+        if (plugin && typeof plugin.destroy === 'function') {
+          plugin.destroy();
+        }
+        this.plugins.delete(name);
+      }
+      addHook(event, handler) {
+        if (!this.hooks.has(event)) {
+          this.hooks.set(event, []);
+        }
+        this.hooks.get(event).push(handler);
+      }
+      removeHook(event, handler) {
+        if (!this.hooks.has(event)) return;
+        this.hooks.set(event, this.hooks.get(event).filter(h => h !== handler));
+      }
+      async executeHooks(event, data) {
+        if (!this.hooks.has(event)) return;
+        for (const handler of this.hooks.get(event)) {
+          try {
+            await handler(data);
+          } catch (error) {
+            console.error(`[Atlas] Error in hook handler for '${event}':`, error);
+          }
+        }
+      }
+      initializePlugins(atlasInstance) {
+        for (const [name, plugin] of this.plugins) {
+          try {
+            plugin.init(atlasInstance);
+          } catch (error) {
+            console.error(`[Atlas] Error initializing plugin '${name}':`, error);
+          }
+        }
+      }
+    }
+
+    // ============================================================================
+    // GESTURE RECOGNIZER
+    // ============================================================================
+
+    class GestureRecognizer {
+      constructor() {
+        this.touches = new Map();
+        this.gestures = new Map();
+      }
+      onTouchStart(touches) {
+        for (const touch of touches) {
+          this.touches.set(touch.identifier, {
+            startX: touch.clientX,
+            startY: touch.clientY,
+            currentX: touch.clientX,
+            currentY: touch.clientY,
+            startTime: Date.now(),
+            identifier: touch.identifier
+          });
+        }
+        this._analyzeGesture();
+      }
+      onTouchMove(touches) {
+        for (const touch of touches) {
+          const tracked = this.touches.get(touch.identifier);
+          if (tracked) {
+            tracked.currentX = touch.clientX;
+            tracked.currentY = touch.clientY;
+          }
+        }
+        this._analyzeGesture();
+      }
+      onTouchEnd(touches) {
+        for (const touch of touches) {
+          const tracked = this.touches.get(touch.identifier);
+          if (tracked) {
+            tracked.endTime = Date.now();
+            tracked.endX = touch.clientX;
+            tracked.endY = touch.clientY;
+          }
+        }
+        const gesture = this._recognizeGesture();
+        this.touches.clear();
+        return gesture;
+      }
+      _analyzeGesture() {
+        const touchArray = Array.from(this.touches.values());
+        if (touchArray.length === 1) {
+          return {
+            type: 'pan',
+            touches: touchArray
+          };
+        } else if (touchArray.length === 2) {
+          const dist = this._getTouchDistance(touchArray[0], touchArray[1]);
+          const angle = this._getTouchAngle(touchArray[0], touchArray[1]);
+          return {
+            type: 'pinch',
+            distance: dist,
+            angle: angle,
+            touches: touchArray
+          };
+        }
+        return null;
+      }
+      _recognizeGesture() {
+        const touches = Array.from(this.touches.values());
+        if (touches.length === 1) {
+          const touch = touches[0];
+          const dx = touch.endX - touch.startX;
+          const dy = touch.endY - touch.startY;
+          const distance = Math.hypot(dx, dy);
+          const duration = touch.endTime - touch.startTime;
+          const velocity = distance / duration;
+          if (distance < 10 && duration < 300) {
+            return {
+              type: 'tap',
+              touch
+            };
+          } else if (velocity > 0.5) {
+            return {
+              type: 'swipe',
+              dx,
+              dy,
+              velocity,
+              touch
+            };
+          }
+        } else if (touches.length === 2) {
+          const t1 = touches[0];
+          const t2 = touches[1];
+          const initialDist = Math.hypot(
+            t1.startX - t2.startX,
+            t1.startY - t2.startY
+          );
+          const finalDist = Math.hypot(
+            t1.endX - t2.endX,
+            t1.endY - t2.endY
+          );
+          const scale = finalDist / initialDist;
+          if (Math.abs(1 - scale) > 0.1) {
+            return {
+              type: 'pinch',
+              scale,
+              touches
+            };
+          } else if (Math.hypot(t1.endX - t1.startX, t1.endY - t1.startY) < 10) {
+            return {
+              type: 'two-finger-tap',
+              touches
+            };
+          }
+        }
+        return null;
+      }
+      _getTouchDistance(touch1, touch2) {
+        return Math.hypot(
+          touch2.currentX - touch1.currentX,
+          touch2.currentY - touch1.currentY
+        );
+      }
+      _getTouchAngle(touch1, touch2) {
+        return Math.atan2(
+          touch2.currentY - touch1.currentY,
+          touch2.currentX - touch1.currentX
+        );
+      }
+    }
+
+    // ============================================================================
+    // CACHE MANAGER
+    // ============================================================================
+
+    class CacheManager {
+      constructor(name = 'atlas-cache', version = 1) {
+        this.dbName = name;
+        this.version = version;
+        this.db = null;
+      }
+      async init() {
+        return new Promise((resolve, reject) => {
+          const request = indexedDB.open(this.dbName, this.version);
+          request.onerror = () => reject(request.error);
+          request.onsuccess = () => {
+            this.db = request.result;
+            resolve();
+          };
+          request.onupgradeneeded = (event) => {
+            const db = event.target.result;
+            if (!db.objectStoreNames.contains('tiles')) {
+              const store = db.createObjectStore('tiles', {
+                keyPath: 'key'
+              });
+              store.createIndex('timestamp', 'timestamp', {
+                unique: false
+              });
+            }
+          };
+        });
+      }
+      async cacheTile(key, imageData, metadata = {}) {
+        const store = this.db.transaction(['tiles'], 'readwrite').objectStore('tiles');
+        return new Promise((resolve, reject) => {
+          const request = store.add({
+            key,
+            imageData,
+            timestamp: Date.now(),
+            metadata,
+            ttl: metadata.ttl || TILE_TTL
+          });
+          request.onerror = () => reject(request.error);
+          request.onsuccess = () => resolve();
+        });
+      }
+      async getTile(key) {
+        const store = this.db.transaction(['tiles'], 'readonly').objectStore('tiles');
+        return new Promise((resolve, reject) => {
+          const request = store.get(key);
+          request.onerror = () => reject(request.error);
+          request.onsuccess = () => {
+            const result = request.result;
+            if (!result) {
+              resolve(null);
+              return;
+            }
+            if (Date.now() - result.timestamp > result.ttl) {
+              this.removeTile(key);
+              resolve(null);
+            } else {
+              resolve(result.imageData);
+            }
+          };
+        });
+      }
+      async removeTile(key) {
+        const store = this.db.transaction(['tiles'], 'readwrite').objectStore('tiles');
+        return new Promise((resolve, reject) => {
+          const request = store.delete(key);
+          request.onerror = () => reject(request.error);
+          request.onsuccess = () => resolve();
+        });
+      }
+      async clearOldTiles(maxAge = TILE_TTL) {
+        const store = this.db.transaction(['tiles'], 'readwrite').objectStore('tiles');
+        const now = Date.now();
+        return new Promise((resolve, reject) => {
+          const request = store.openCursor();
+          request.onerror = () => reject(request.error);
+          request.onsuccess = (event) => {
+            const cursor = event.target.result;
+            if (cursor) {
+              if (now - cursor.value.timestamp > maxAge) {
+                cursor.delete();
+              }
+              cursor.continue();
+            } else {
+              resolve();
+            }
+          };
+        });
+      }
+    }
+
+    // ============================================================================
+    // TILE REQUEST QUEUE
+    // ============================================================================
+
+    class PriorityQueue {
+      constructor() {
+        this.items = [];
+      }
+      enqueue(item) {
+        let added = false;
+        for (let i = 0; i < this.items.length; i++) {
+          if (item.priority > this.items[i].priority) {
+            this.items.splice(i, 0, item);
+            added = true;
+            break;
+          }
+        }
+        if (!added) {
+          this.items.push(item);
+        }
+      }
+      dequeue() {
+        return this.items.shift();
+      }
+      remove(predicate) {
+        this.items = this.items.filter(item => !predicate(item));
+      }
+      size() {
+        return this.items.length;
+      }
+      clear() {
+        this.items = [];
+      }
+    }
+
+    class TileRequestQueue {
+      constructor(maxConcurrent = 4) {
+        this.maxConcurrent = maxConcurrent;
+        this.activeRequests = new Map();
+        this.pendingRequests = [];
+        this.priorityQueue = new PriorityQueue();
+      }
+      async request(key, priority, fetchFn) {
+        if (this.activeRequests.size < this.maxConcurrent) {
+          return this._executeRequest(key, fetchFn);
+        } else {
+          return new Promise((resolve, reject) => {
+            this.priorityQueue.enqueue({
+              key,
+              priority,
+              fetchFn,
+              resolve,
+              reject
+            });
+          });
+        }
+      }
+      async _executeRequest(key, fetchFn) {
+        try {
+          this.activeRequests.set(key, true);
+          const result = await fetchFn();
+          return result;
+        } catch (error) {
+          throw error;
+        } finally {
+          this.activeRequests.delete(key);
+          this._processPending();
+        }
+      }
+      _processPending() {
+        while (this.priorityQueue.size() > 0 && this.activeRequests.size < this.maxConcurrent) {
+          const {
+            key,
+            fetchFn,
+            resolve,
+            reject
+          } = this.priorityQueue.dequeue();
+          this._executeRequest(key, fetchFn)
+            .then(resolve)
+            .catch(reject);
+        }
+      }
+      cancel(key) {
+        this.priorityQueue.remove(item => item.key === key);
+      }
+      clear() {
+        this.activeRequests.clear();
+        this.priorityQueue.clear();
+      }
+    }
+
+    // ============================================================================
+    // REQUEST DEDUPLICATOR
+    // ============================================================================
+    class RequestDeduplicator {
+      constructor() {
+        this.pendingRequests = new Map();
+      }
+      async execute(key, asyncFn) {
+        if (this.pendingRequests.has(key)) {
+          return this.pendingRequests.get(key);
+        }
+        const promise = asyncFn()
+          .then(result => {
+            this.pendingRequests.delete(key);
+            return result;
+          })
+          .catch(error => {
+            this.pendingRequests.delete(key);
+            throw error;
+          });
+        this.pendingRequests.set(key, promise);
+        return promise;
+      }
+      isPending(key) {
+        return this.pendingRequests.has(key);
+      }
+      clear() {
+        this.pendingRequests.clear();
+      }
+    }
+
+    // ============================================================================
     // ERROR BOUNDARY
     // ============================================================================
 
@@ -529,6 +1071,10 @@
     // ============================================================================
     // UTILITY FUNCTIONS
     // ============================================================================
+
+    function screenDistance(p1, p2) {
+      return Math.hypot(p2.x - p1.x, p2.y - p1.y);
+    }
 
     function normalizeAngle(rad) {
       return Math.atan2(Math.sin(rad), Math.cos(rad));
@@ -1009,6 +1555,17 @@
       onAdd() { }
       onRemove() { }
       render() { }
+
+      isVisible() {
+        if (!this._map) return false;
+        if (typeof this.getBounds !== 'function') return true;
+
+        const bounds = this.getBounds();
+        if (!bounds) return true;
+
+        const viewportBounds = this._map.getViewportBounds();
+        return bounds.intersects(viewportBounds);
+      }
     }
 
     // ============================================================================
@@ -1044,6 +1601,10 @@
         this._evictionScheduled = false;
         this._evictionInProgress = false;
         this._tileAccessOrder = new Map();
+        this._requestDeduplicator = new RequestDeduplicator();
+        this._tileRequestQueue = new TileRequestQueue(this.options.maxConcurrentTiles || 4);
+        this._cache = new CacheManager();
+        this._cache.init().then(() => console.info('[Atlas] Tile cache initialized'));
       }
 
       _getTileUrl(x, y, z) {
@@ -1087,84 +1648,103 @@
       }
 
       async _loadTile(key, url) {
-        if (this.tileCache.has(key)) {
-          const cached = this.tileCache.get(key);
-          cached.lastUsed = Date.now();
-          return cached;
+        const cachedTileData = await this._cache.getTile(key);
+        if (cachedTileData) {
+          const img = new Image();
+          img.src = cachedTileData;
+          const tile = {
+            img,
+            loaded: true,
+            loadedAt: Date.now(),
+            lastUsed: Date.now()
+          };
+          this.tileCache.set(key, tile);
+          if (this._map) this._map.scheduleRender();
+          return tile;
         }
 
-        const controller = new AbortController();
-        const img = new Image();
-        img.crossOrigin = "anonymous";
+        return this._requestDeduplicator.execute(key, async () => {
+          if (this.tileCache.has(key)) {
+            const cached = this.tileCache.get(key);
+            cached.lastUsed = Date.now();
+            return cached;
+          }
 
-        const tile = {
-          img,
-          loaded: false,
-          loadedAt: Date.now(),
-          lastUsed: Date.now(),
-          controller,
-          url
-        };
+          const controller = new ManagedAbortController(TILE_LOAD_TIMEOUT_MS);
+          const img = new Image();
+          img.crossOrigin = "anonymous";
 
-        this.tileCache.set(key, tile);
-        this.loadingTiles.add(key);
-        this.loadingControllers.set(key, controller);
+          const tile = {
+            img,
+            loaded: false,
+            loadedAt: Date.now(),
+            lastUsed: Date.now(),
+            controller,
+            url
+          };
 
-        return new Promise((resolve, reject) => {
-          const timeoutId = setTimeout(() => {
-            if (this.loadingTiles.has(key)) {
-              controller.abort();
-              console.warn(`[Atlas] Tile load timeout: ${url}`);
+          this.tileCache.set(key, tile);
+          this.loadingTiles.add(key);
+          this.loadingControllers.set(key, controller);
+
+          return new Promise((resolve, reject) => {
+            img.onload = () => {
+              if (controller.isAborted()) {
+                reject(new Error('Load aborted'));
+                return;
+              }
+              tile.loaded = true;
+              tile.loadedAt = Date.now();
+              this.loadingTiles.delete(key);
+              this.loadingControllers.delete(key);
+              if (this._map) {
+                this._map.scheduleRender();
+              }
+              this.fire('tileload', {
+                tile: key,
+                url
+              });
+
+              const canvas = document.createElement('canvas');
+              canvas.width = img.width;
+              canvas.height = img.height;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0);
+              const dataUrl = canvas.toDataURL();
+              this._cache.cacheTile(key, dataUrl);
+
+              resolve(tile);
+            };
+
+            img.onerror = (error) => {
+              if (controller.isAborted()) {
+                reject(new Error('Load aborted'));
+                return;
+              }
+
+              console.warn(`[Atlas] Failed to load tile: ${url}`, error);
+
+              if (this.options.supportsRetina && url.includes(CONFIG.retinaSuffix)) {
+                this._retinaAvailable = false;
+                console.info('[Atlas] Retina tiles not available. Disabling retina mode.');
+                const standardUrl = url.replace(new RegExp(CONFIG.retinaSuffix, 'g'), '');
+                img.src = standardUrl;
+                return;
+              }
+
               this.loadingTiles.delete(key);
               this.loadingControllers.delete(key);
               this.tileCache.delete(key);
-              this.fire('tileerror', { tile: key, url, error: new Error('Timeout') });
-              reject(new Error(`Timeout loading tile: ${url}`));
-            }
-          }, TILE_LOAD_TIMEOUT_MS);
+              this.fire('tileerror', {
+                tile: key,
+                url,
+                error
+              });
+              reject(error);
+            };
 
-          img.onload = () => {
-            clearTimeout(timeoutId);
-            if (controller.signal.aborted) {
-              reject(new Error('Load aborted'));
-              return;
-            }
-            tile.loaded = true;
-            tile.loadedAt = Date.now();
-            this.loadingTiles.delete(key);
-            this.loadingControllers.delete(key);
-            if (this._map) {
-              this._map.scheduleRender();
-            }
-            this.fire('tileload', { tile: key, url });
-            resolve(tile);
-          };
-
-          img.onerror = (error) => {
-            clearTimeout(timeoutId);
-            if (controller.signal.aborted) {
-              reject(new Error('Load aborted'));
-              return;
-            }
-
-            console.warn(`[Atlas] Failed to load tile: ${url}`, error);
-
-            if (this.options.supportsRetina && url.includes(CONFIG.retinaSuffix)) {
-              this._retinaAvailable = false;
-              console.info('[Atlas] Retina tiles not available. Disabling retina mode.');
-              const standardUrl = url.replace(new RegExp(CONFIG.retinaSuffix, 'g'), '');
-              img.src = standardUrl;
-              return;
-            }
-
-            this.loadingTiles.delete(key);
-            this.loadingControllers.delete(key);
-            this.tileCache.delete(key);
-            this.fire('tileerror', { tile: key, url, error });
-            reject(error);
-          };
-
-          img.src = url;
+            img.src = url;
+          });
         });
       }
 
@@ -1347,24 +1927,21 @@
         ctx.scale(scaleFactor, scaleFactor);
         ctx.imageSmoothingEnabled = this._map.zoom > zInt + 0.5;
 
-        for (const { X, Y } of this._renderTilesArray) {
+        for (const { X, Y, distSq } of this._renderTilesArray) {
           const key = `${zInt}/${X}/${Y}`;
           const url = this._getTileUrl(X, Y, zInt);
 
           let tile = this.tileCache.get(key);
-          if (!tile) {
-            this._loadTile(key, url).catch(e => {
+          if (!tile && !this._requestDeduplicator.isPending(key)) {
+            const priority = 1 / (distSq + 1);
+            this._tileRequestQueue.request(key, priority, () => this._loadTile(key, url)).catch(e => {
               // Handle load error
             });
-            continue;
-          }
-
-          if (tile.loaded && tile.img) {
+          } else if (tile && tile.loaded && tile.img) {
             try {
               ctx.drawImage(tile.img, (X - ct.x) * ts, (Y - ct.y) * ts, ts, ts);
               this._recordTileAccess(key);
 
-              // Check if tile needs refreshing
               if (tile.loadedAt && Date.now() - tile.loadedAt > TILE_TTL) {
                 this._reloadTile(key, url);
               }
@@ -2338,6 +2915,165 @@
     }
 
     // ============================================================================
+    // GEOMETRY BATCH
+    // ============================================================================
+
+    class GeometryBatch {
+      constructor() {
+        this.features = [];
+      }
+      addFeature(geometry, properties = {}) {
+        this.features.push({
+          type: 'Feature',
+          geometry,
+          properties
+        });
+        return this;
+      }
+      removeFeature(index) {
+        this.features.splice(index, 1);
+        return this;
+      }
+      clear() {
+        this.features = [];
+        return this;
+      }
+      toGeoJSON() {
+        return {
+          type: 'FeatureCollection',
+          features: this.features
+        };
+      }
+      getCount() {
+        return this.features.length;
+      }
+    }
+
+    // ============================================================================
+    // SCALE CONTROL
+    // ============================================================================
+
+    class ScaleControl extends Control {
+      constructor(options = {}) {
+        super({
+          position: 'bottom-left',
+          ...options
+        });
+        this.options = {
+          metric: true,
+          imperial: true,
+          ...this.options
+        };
+      }
+      onAdd(map) {
+        const container = document.createElement('div');
+        container.className = 'atlas-scale-control';
+        container.style.cssText = `
+          background: white;
+          padding: 5px 10px;
+          border-radius: 4px;
+          font-size: 12px;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        `;
+        this._container = container;
+        map.on('move', () => this._update(map));
+        map.on('zoom', () => this._update(map));
+        this._update(map);
+        return container;
+      }
+      _update(map) {
+        const center = map.getCenter();
+        const resolution = GISUtils.getResolution(center.lat, map.getZoom());
+        let html = '';
+        if (this.options.metric) {
+          const meters = resolution * 100;
+          html += meters < 1000 ? `${Math.round(meters)}m` : `${(meters / 1000).toFixed(1)}km`;
+        }
+        if (this.options.imperial) {
+          const miles = (resolution * 100) * 0.000621371;
+          if (html) html += ' / ';
+          html += miles < 1 ? `${Math.round(miles * 5280)}ft` : `${miles.toFixed(1)}mi`;
+        }
+        this._container.innerHTML = html;
+      }
+    }
+
+    // ============================================================================
+    // POPUP CLASS
+    // ============================================================================
+
+    class Popup {
+      constructor(options = {}) {
+        this.options = {
+          offset: [0, 0],
+          maxWidth: 300,
+          className: 'atlas-popup',
+          ...options
+        };
+        this._map = null;
+        this._content = null;
+        this._latlng = null;
+        this._element = null;
+      }
+      setContent(content) {
+        this._content = content;
+        if (this._element) {
+          this._element.innerHTML = typeof content === 'string' ? content : '';
+        }
+        return this;
+      }
+      setLatLng(latlng) {
+        this._latlng = LatLng.from(latlng);
+        if (this._map) this._updatePosition();
+        return this;
+      }
+      addTo(map) {
+        this._map = map;
+        this._render();
+        map.on('move', () => this._updatePosition());
+        return this;
+      }
+      remove() {
+        if (this._element && this._element.parentNode) {
+          this._element.parentNode.removeChild(this._element);
+        }
+        if (this._map) {
+          this._map.off('move', () => this._updatePosition());
+        }
+        return this;
+      }
+      _render() {
+        if (!this._map) return;
+        if (!this._element) {
+          this._element = document.createElement('div');
+          this._element.className = this.options.className;
+          this._element.style.cssText = `
+            position: absolute;
+            max-width: ${this.options.maxWidth}px;
+            background: white;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            padding: 12px;
+            z-index: 1001;
+            pointer-events: auto;
+          `;
+          this._map.container.appendChild(this._element);
+        }
+        if (this._content) {
+          this._element.innerHTML = typeof this._content === 'string' ? this._content : '';
+        }
+        this._updatePosition();
+      }
+      _updatePosition() {
+        if (!this._element || !this._latlng) return;
+        const point = this._map.latLngToContainerPoint(this._latlng);
+        const [offsetX, offsetY] = this.options.offset;
+        this._element.style.left = (point.x + offsetX) + 'px';
+        this._element.style.top = (point.y + offsetY) + 'px';
+      }
+    }
+
+    // ============================================================================
     // COMPASS CONTROL
     // ============================================================================
 
@@ -2596,6 +3332,7 @@
         this._onTouchStart = this._onTouchStart.bind(this);
         this._onTouchMove = this._onTouchMove.bind(this);
         this._onTouchEnd = this._onTouchEnd.bind(this);
+        this._gestureRecognizer = new GestureRecognizer();
       }
 
       _addListener(target, event, handler, options) {
@@ -2654,32 +3391,42 @@
       _onTouchStart(e) {
         if (e.touches.length !== 1) return;
         e.preventDefault();
-        this._startDrag(e.touches[0].clientX, e.touches[0].clientY);
+        this._gestureRecognizer.onTouchStart(e.touches);
         this._addListener(document, 'touchmove', this._onTouchMove, { passive: false });
         this._addListener(document, 'touchend', this._onTouchEnd);
         this._addListener(document, 'touchcancel', this._onTouchEnd);
       }
 
       _onTouchMove(e) {
-        if (!this._isDragging || e.touches.length !== 1) return;
+        if (e.touches.length !== 1) return;
         e.preventDefault();
-        const dx = e.touches[0].clientX - this._dragStart.x;
-        const dy = e.touches[0].clientY - this._dragStart.y;
-        if (dx === 0 && dy === 0) return;
-        const w = this._map.canvas.width / this._map.dpr;
-        const h = this._map.canvas.height / this._map.dpr;
-        this._map.center = this._map.screenToLatLon(
-          w / 2 - dx, h / 2 - dy, this._map.zoom, this._map.bearing, this._dragStart.center
-        );
-        this._pushVelocitySample(e.touches[0].clientX, e.touches[0].clientY);
-        this._map.render();
+        this._gestureRecognizer.onTouchMove(e.touches);
+        const gesture = this._gestureRecognizer._analyzeGesture();
+        if (gesture && gesture.type === 'pan') {
+          const touch = gesture.touches[0];
+          const dx = touch.currentX - touch.startX;
+          const dy = touch.currentY - touch.startY;
+          if (dx === 0 && dy === 0) return;
+          const w = this._map.canvas.width / this._map.dpr;
+          const h = this._map.canvas.height / this._map.dpr;
+          this._map.center = this._map.screenToLatLon(
+            w / 2 - dx, h / 2 - dy, this._map.zoom, this._map.bearing, this._dragStart.center
+          );
+          this._pushVelocitySample(touch.currentX, touch.currentY);
+          this._map.render();
+        }
       }
 
-      _onTouchEnd() {
+      _onTouchEnd(e) {
+        const gesture = this._gestureRecognizer.onTouchEnd(e.changedTouches);
         this._removeListener(document, 'touchmove', this._onTouchMove, { passive: false });
         this._removeListener(document, 'touchend', this._onTouchEnd);
         this._removeListener(document, 'touchcancel', this._onTouchEnd);
-        this._endDrag();
+        if (gesture && gesture.type === 'swipe') {
+          this._startInertia(gesture.velocity * gesture.dx, gesture.velocity * gesture.dy);
+        } else {
+          this._endDrag();
+        }
       }
 
       _startDrag(clientX, clientY) {
@@ -2848,6 +3595,7 @@
         this._onTouchStart = this._onTouchStart.bind(this);
         this._onTouchMove = this._onTouchMove.bind(this);
         this._onTouchEnd = this._onTouchEnd.bind(this);
+        this._gestureRecognizer = new GestureRecognizer();
       }
 
       _addEvents() {
@@ -2869,6 +3617,7 @@
         if (e.touches.length < 2) return;
         e.preventDefault();
 
+        this._gestureRecognizer.onTouchStart(e.touches);
         this._startPinch(e);
 
         document.addEventListener('touchmove', this._onTouchMove, { passive: false });
@@ -2885,11 +3634,11 @@
         const t1 = e.touches[0];
         const t2 = e.touches[1];
 
-        this._pinchStartDist = distance(t1.clientX, t1.clientY, t2.clientX, t2.clientY);
-        this._pinchStartAngle = Math.atan2(t2.clientY - t1.clientY, t2.clientX - t1.clientX);
+        const gesture = this._gestureRecognizer._analyzeGesture();
+        this._pinchStartDist = gesture.distance;
+        this._pinchStartAngle = gesture.angle;
         this._pinchStartZoom = this._map.getZoom();
         this._pinchStartBearing = this._map.getBearing();
-        this._pinchStartTime = performance.now();
 
         const rect = this._map.canvas.getBoundingClientRect();
         const x = (t1.clientX + t2.clientX) / 2 - rect.left;
@@ -2903,49 +3652,39 @@
           this._map.getBearing(),
           this._map.getCenter()
         );
-
-        this._pinchMoved = false;
       }
 
       _onTouchMove(e) {
         if (!this._isPinching || e.touches.length < 2) return;
         e.preventDefault();
 
-        const t1 = e.touches[0];
-        const t2 = e.touches[1];
+        this._gestureRecognizer.onTouchMove(e.touches);
+        const gesture = this._gestureRecognizer._analyzeGesture();
 
-        const dist = distance(t1.clientX, t1.clientY, t2.clientX, t2.clientY);
-        const angle = Math.atan2(t2.clientY - t1.clientY, t2.clientX - t1.clientX);
+        if (gesture && gesture.type === 'pinch') {
+          const t1 = e.touches[0];
+          const t2 = e.touches[1];
+          const rect = this._map.canvas.getBoundingClientRect();
+          const x = (t1.clientX + t2.clientX) / 2 - rect.left;
+          const y = (t1.clientY + t2.clientY) / 2 - rect.top;
 
-        const rect = this._map.canvas.getBoundingClientRect();
-        const x = (t1.clientX + t2.clientX) / 2 - rect.left;
-        const y = (t1.clientY + t2.clientY) / 2 - rect.top;
+          const targetZoom = this._pinchStartZoom + Math.log2(gesture.distance / Math.max(1, this._pinchStartDist));
+          const deltaAngle = normalizeAngle(gesture.angle - this._pinchStartAngle);
+          const targetBearing = normalizeAngle(this._pinchStartBearing + deltaAngle);
 
-        const targetZoom = this._pinchStartZoom + Math.log2(dist / Math.max(1, this._pinchStartDist));
-        const deltaAngle = normalizeAngle(angle - this._pinchStartAngle);
-        const targetBearing = normalizeAngle(this._pinchStartBearing + deltaAngle);
+          this._map.applyZoomRotateAbout(x, y, targetZoom, targetBearing, this._pinchAnchorLL);
+          this._pinchLastCenter = { x, y };
 
-        if (!this._pinchMoved) {
-          const zoomChange = Math.abs(Math.log(dist / Math.max(1, this._pinchStartDist)));
-          const rotationChange = Math.abs(deltaAngle);
-
-          if (zoomChange > Math.log(1.05) || rotationChange > ROTATE_MOVE_THRESH_RAD) {
-            this._pinchMoved = true;
-          }
+          this._map.render();
         }
-
-        this._map.applyZoomRotateAbout(x, y, targetZoom, targetBearing, this._pinchAnchorLL);
-        this._pinchLastCenter = { x, y };
-
-        this._map.render();
       }
 
       _onTouchEnd(e) {
         if (!this._isPinching) return;
 
-        const dt = performance.now() - this._pinchStartTime;
+        const gesture = this._gestureRecognizer.onTouchEnd(e.changedTouches);
 
-        if (dt <= TWO_FINGER_TAP_MAX_DELAY && !this._pinchMoved) {
+        if (gesture && gesture.type === 'two-finger-tap') {
           const x = this._pinchLastCenter ? this._pinchLastCenter.x : (this._map.canvas.width / this._map.dpr) / 2;
           const y = this._pinchLastCenter ? this._pinchLastCenter.y : (this._map.canvas.height / this._map.dpr) / 2;
 
@@ -3018,6 +3757,8 @@
         this._lastFrameTime = null;
         this.performanceMonitor = new PerformanceMonitor();
         this.errorBoundary = new ErrorBoundary('Atlas');
+        this._isRenderScheduled = false;
+        this.plugins = new PluginSystem();
 
 
         // Layer management
@@ -3037,7 +3778,6 @@
         // Bind methods
         this._onResize = ThrottleDebounce.throttle(this.resize.bind(this), 100);
         this._draw = this._draw.bind(this);
-        this._scheduleRender = ThrottleDebounce.debounce(this._draw.bind(this), 16.67);
 
 
         // Initialize
@@ -3056,6 +3796,9 @@
 
         // Add default controls
         this._initializeControls();
+
+        // Initialize plugins
+        this.plugins.initializePlugins(this);
 
         // Log usage info
         this._logUsageInfo();
@@ -3176,6 +3919,26 @@
         return [...this._layers];
       }
 
+      bringLayerToFront(layer) {
+        const index = this._layers.indexOf(layer);
+        if (index > -1) {
+          this._layers.splice(index, 1);
+          this._layers.push(layer);
+          this.render();
+        }
+        return this;
+      }
+
+      sendLayerToBack(layer) {
+        const index = this._layers.indexOf(layer);
+        if (index > -1) {
+          this._layers.splice(index, 1);
+          this._layers.unshift(layer);
+          this.render();
+        }
+        return this;
+      }
+
       // ========== CONTROL MANAGEMENT ==========
 
       addControl(control) {
@@ -3282,6 +4045,22 @@
         return this.bearing;
       }
 
+      getViewportBounds() {
+        const w = this.canvas.width / this.dpr;
+        const h = this.canvas.height / this.dpr;
+        const corners = [
+          this.screenToLatLon(0, 0),
+          this.screenToLatLon(w, 0),
+          this.screenToLatLon(w, h),
+          this.screenToLatLon(0, h)
+        ];
+        const minLon = Math.min(...corners.map(c => c.lon));
+        const maxLon = Math.max(...corners.map(c => c.lon));
+        const minLat = Math.min(...corners.map(c => c.lat));
+        const maxLat = Math.max(...corners.map(c => c.lat));
+        return new Bounds({ lat: minLat, lon: minLon }, { lat: maxLat, lon: maxLon });
+      }
+
       isFocused() {
         return document.activeElement === this.container;
       }
@@ -3351,7 +4130,10 @@
       }
 
       scheduleRender() {
-        this._scheduleRender();
+        if (!this._isRenderScheduled) {
+          this._isRenderScheduled = true;
+          requestAnimationFrame(this._draw);
+        }
       }
 
       render() {
@@ -3360,6 +4142,8 @@
       }
 
       _draw() {
+        this._isRenderScheduled = false;
+
         const now = performance.now();
         const frameTime = this._lastFrameTime ? now - this._lastFrameTime : 16.67;
         this._lastFrameTime = now;
@@ -3632,6 +4416,31 @@
         this._flyAnim = { raf: requestAnimationFrame(step) };
 
         return this;
+      }
+
+      fitBounds(bounds, options = {}) {
+        const padding = options.padding || 50;
+        const maxZoom = options.maxZoom || 18;
+        const duration = options.duration || 800;
+        const w = this.canvas.width / this.dpr;
+        const h = this.canvas.height / this.dpr;
+
+        const ne = this.latLngToContainerPoint(bounds.northEast);
+        const sw = this.latLngToContainerPoint(bounds.southWest);
+
+        const width = Math.max(ne.x - sw.x, 1);
+        const height = Math.max(sw.y - ne.y, 1);
+
+        const zoomX = this.getZoom() - Math.log2((width) / (w - 2 * padding));
+        const zoomY = this.getZoom() - Math.log2((height) / (h - 2 * padding));
+
+        const finalZoom = Math.min(maxZoom, Math.max(0, Math.min(zoomX, zoomY)));
+
+        return this.flyTo({
+          center: bounds.center,
+          zoom: finalZoom,
+          duration
+        });
       }
 
       // ========== CLEANUP ==========
