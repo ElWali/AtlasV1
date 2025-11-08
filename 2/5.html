@@ -340,6 +340,153 @@
     }
 
     // ============================================================================
+    // CONFIGURATION VALIDATOR
+    // ============================================================================
+    class ConfigValidator {
+      static schemas = {
+        atlasOptions: {
+          defaultCenter: { type: 'object', validate: v => typeof v.lat === 'number' && typeof v.lon === 'number' },
+          defaultZoom: { type: 'number', min: 0, max: 28 },
+          retina: { type: 'string', enum: ['auto', true, false] },
+        },
+        layerOptions: {
+          minZoom: { type: 'number', min: 0, max: 28 },
+          maxZoom: { type: 'number', min: 0, max: 28 },
+          maxCacheSize: { type: 'number', min: 10, max: 10000 },
+          supportsRetina: { type: 'boolean' }
+        }
+      };
+      static validate(data, schema) {
+        const errors = [];
+        for (const [key, rule] of Object.entries(schema)) {
+          const value = data[key];
+          if (value === undefined) {
+            if (rule.required) {
+              errors.push(`Missing required field: ${key}`);
+            }
+            continue;
+          }
+          if (rule.type && typeof value !== rule.type) {
+            errors.push(`${key} must be of type ${rule.type}`);
+            continue;
+          }
+          if (rule.min !== undefined && value < rule.min) {
+            errors.push(`${key} must be >= ${rule.min}`);
+          }
+          if (rule.max !== undefined && value > rule.max) {
+            errors.push(`${key} must be <= ${rule.max}`);
+          }
+          if (rule.enum && !rule.enum.includes(value)) {
+            errors.push(`${key} must be one of: ${rule.enum.join(', ')}`);
+          }
+          if (rule.validate && !rule.validate(value)) {
+            errors.push(`${key} failed custom validation`);
+          }
+        }
+        if (errors.length > 0) {
+          throw new Error(`Configuration validation failed:\n ${errors.join('\n ')}`);
+        }
+        return true;
+      }
+    }
+
+    // ============================================================================
+    // PERFORMANCE MONITOR
+    // ============================================================================
+    class PerformanceMonitor {
+      constructor() {
+        this._metrics = new Map();
+        this._frameMetrics = [];
+      }
+      mark(name) {
+        const key = `${name}-start`;
+        this._metrics.set(key, performance.now());
+      }
+      measure(name) {
+        const startKey = `${name}-start`;
+        const start = this._metrics.get(startKey);
+        if (!start) {
+          console.warn(`[Atlas] No mark found for: ${name}`);
+          return null;
+        }
+        const duration = performance.now() - start;
+        this._metrics.delete(startKey);
+        return { name, duration, timestamp: Date.now() };
+      }
+      recordFrame(metrics) {
+        this._frameMetrics.push({
+          timestamp: Date.now(),
+          fps: 1000 / (metrics.frameTime || 16.67),
+          renderTime: metrics.renderTime || 0,
+          tileLoadTime: metrics.tileLoadTime || 0
+        });
+        if (this._frameMetrics.length > 300) {
+          this._frameMetrics.shift();
+        }
+      }
+      getAverageFPS() {
+        if (this._frameMetrics.length === 0) return 0;
+        const sum = this._frameMetrics.reduce((acc, m) => acc + m.fps, 0);
+        return sum / this._frameMetrics.length;
+      }
+      getMetricsReport() {
+        return {
+          frameCount: this._frameMetrics.length,
+          averageFPS: this.getAverageFPS(),
+          averageRenderTime: this._frameMetrics.reduce((acc, m) => acc + m.renderTime, 0) / this._frameMetrics.length,
+          memory: performance.memory ? {
+            usedJSHeapSize: performance.memory.usedJSHeapSize,
+            totalJSHeapSize: performance.memory.totalJSHeapSize,
+            jsHeapSizeLimit: performance.memory.jsHeapSizeLimit
+          } : null
+        };
+      }
+    }
+
+    // ============================================================================
+    // THROTTLE DEBOUNCE
+    // ============================================================================
+    class ThrottleDebounce {
+      static throttle(fn, delay) {
+        let lastCall = 0;
+        let timeoutId = null;
+        return function throttled(...args) {
+          const now = Date.now();
+          const timeSinceLastCall = now - lastCall;
+          if (timeSinceLastCall >= delay) {
+            lastCall = now;
+            fn.apply(this, args);
+          } else {
+            clearTimeout(timeoutId);
+            timeoutId = setTimeout(() => {
+              lastCall = Date.now();
+              fn.apply(this, args);
+            }, delay - timeSinceLastCall);
+          }
+        };
+      }
+      static debounce(fn, delay, immediate = false) {
+        let timeoutId = null;
+        let lastResult;
+        return function debounced(...args) {
+          const later = () => {
+            timeoutId = null;
+            if (!immediate) {
+              lastResult = fn.apply(this, args);
+            }
+          };
+          const callNow = immediate && !timeoutId;
+          clearTimeout(timeoutId);
+          timeoutId = setTimeout(later, delay);
+          if (callNow) {
+            lastResult = fn.apply(this, args);
+          }
+          return lastResult;
+        };
+      }
+    }
+
+    // ============================================================================
     // ERROR BOUNDARY
     // ============================================================================
 
@@ -720,14 +867,19 @@
         data.type = type;
         data.target = this;
         this._firingEvents.add(type);
+        const errorBoundary = this.errorBoundary || (this._map && this._map.errorBoundary);
         try {
           for (let i = 0; i < listeners.length; i++) {
             const fn = listeners[i];
             if (fn === null) continue;
-            try {
-              fn(data);
-            } catch (e) {
-              console.error(`[Atlas] Error in '${type}' event listener:`, e);
+            if (errorBoundary) {
+              errorBoundary.execute(() => fn(data));
+            } else {
+              try {
+                fn(data);
+              } catch (e) {
+                console.error(`[Atlas] Error in '${type}' event listener:`, e);
+              }
             }
           }
         } finally {
@@ -866,6 +1018,7 @@
     class TileLayer extends Layer {
       constructor(urlTemplate, options = {}) {
         super(options);
+        ConfigValidator.validate(options, ConfigValidator.schemas.layerOptions);
         this.urlTemplate = urlTemplate;
         this.options = {
           minZoom: options.minZoom || 0,
@@ -2819,6 +2972,7 @@
     class Atlas extends EventEmitter {
       constructor(id, options = {}) {
         super();
+        ConfigValidator.validate(options, ConfigValidator.schemas.atlasOptions);
         Object.assign(CONFIG, options);
 
         // Get DOM elements
@@ -2861,6 +3015,9 @@
         this._zoomAnim = null;
         this._flyAnim = null;
         this._allAnimations = new Set();
+        this._lastFrameTime = null;
+        this.performanceMonitor = new PerformanceMonitor();
+        this.errorBoundary = new ErrorBoundary('Atlas');
 
 
         // Layer management
@@ -2878,8 +3035,10 @@
         this.projection = DEFAULT_PROJECTION;
 
         // Bind methods
-        this._onResize = this.resize.bind(this);
+        this._onResize = ThrottleDebounce.throttle(this.resize.bind(this), 100);
         this._draw = this._draw.bind(this);
+        this._scheduleRender = ThrottleDebounce.debounce(this._draw.bind(this), 16.67);
+
 
         // Initialize
         this.resize();
@@ -3192,13 +3351,7 @@
       }
 
       scheduleRender() {
-        if (this._isRenderScheduled) return;
-        this._isRenderScheduled = true;
-
-        requestAnimationFrame(() => {
-          this._isRenderScheduled = false;
-          this._draw();
-        });
+        this._scheduleRender();
       }
 
       render() {
@@ -3207,6 +3360,12 @@
       }
 
       _draw() {
+        const now = performance.now();
+        const frameTime = this._lastFrameTime ? now - this._lastFrameTime : 16.67;
+        this._lastFrameTime = now;
+
+        this.performanceMonitor.mark('render');
+
         const backgroundColor = this._baseLayer ? this._baseLayer.getBackground() : '#000';
         const w = this.canvas.width / this.dpr;
         const h = this.canvas.height / this.dpr;
@@ -3220,11 +3379,7 @@
         // Render all layers
         for (const layer of this._layers) {
           if (typeof layer.render === 'function') {
-            try {
-              layer.render();
-            } catch (e) {
-              console.error('[Atlas] Error rendering layer:', e);
-            }
+            this.errorBoundary.execute(() => layer.render());
           }
         }
 
@@ -3232,6 +3387,9 @@
 
         // Update loading indicator
         this._updateLoadingIndicator();
+
+        const renderTime = this.performanceMonitor.measure('render').duration;
+        this.performanceMonitor.recordFrame({ frameTime, renderTime });
       }
 
       _updateLoadingIndicator() {
