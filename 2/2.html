@@ -1,0 +1,640 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Atlas.js — Ultimate Edition (Demo)</title>
+<style>
+  :root{
+    --ui-bg: rgba(34,34,34,0.85);
+    --ui-fg: #fff;
+    --control-size: 40px;
+  }
+  html,body{height:100%;margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:#111;color:#eee}
+  #map{position:fixed;inset:0;background:#cfeff7;overflow:hidden;touch-action:none}
+  .atlas-layer{position:absolute;inset:0;overflow:hidden;will-change:transform}
+  .atlas-tile{position:absolute; width:256px;height:256px; image-rendering: auto; background:#e6f0f4}
+  .atlas-marker{position:absolute; transform:translate(-50%,-100%); cursor:pointer; touch-action:none}
+  .atlas-marker .dot{width:18px;height:18px;border-radius:50%;background:#ff4757;border:2px solid white;box-shadow:0 3px 8px rgba(0,0,0,0.35)}
+  .atlas-popup{position:absolute; transform:translate(-50%,-110%); min-width:120px; background:var(--ui-bg); color:var(--ui-fg); padding:8px;border-radius:6px; box-shadow:0 8px 20px rgba(0,0,0,0.4); font-size:13px}
+  .atlas-controls{position:absolute; right:12px; top:12px; display:flex; flex-direction:column; gap:8px; z-index:1000}
+  .atlas-btn{width:var(--control-size); height:var(--control-size); display:flex; align-items:center; justify-content:center; background:var(--ui-bg); color:var(--ui-fg); border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,0.35); cursor:pointer; user-select:none}
+  .atlas-zoom-slider{width:32px; height:180px; position:relative; background:var(--ui-bg); border-radius:10px; padding:8px; display:flex; align-items:center; justify-content:center}
+  .atlas-zoom-slider input[type=range]{transform:rotate(-90deg); width:150px}
+  .atlas-attrib{position:absolute;left:8px;bottom:8px;background:rgba(0,0,0,0.45);color:#ddd;padding:6px 8px;border-radius:6px;font-size:12px}
+  .atlas-layer-toggle{position:absolute; left:12px; top:12px; z-index:1000; display:flex; gap:8px}
+  .atlas-layer-btn{background:var(--ui-bg); color:var(--ui-fg); padding:6px 8px;border-radius:6px; cursor:pointer; font-size:13px}
+  .atlas-scale{position:absolute; left:12px; bottom:56px;background:rgba(0,0,0,0.45); color:#ddd;padding:6px;border-radius:6px;font-size:12px}
+  /* responsive */
+  @media (max-width:520px){
+    .atlas-zoom-slider{display:none}
+    .atlas-controls{right:8px; top:8px}
+    .atlas-btn{width:36px;height:36px}
+  }
+</style>
+</head>
+<body>
+<div id="map" aria-label="Atlas.js map"></div>
+
+<!-- Controls (demo) -->
+<div class="atlas-layer-toggle" id="layerToggle" style="display:none"></div>
+<div class="atlas-controls" id="controls" style="display:none">
+  <div class="atlas-btn" id="btnZoomIn" title="Zoom in">+</div>
+  <div class="atlas-btn" id="btnZoomOut" title="Zoom out">−</div>
+  <div class="atlas-zoom-slider" title="Zoom">
+    <input id="zoomRange" type="range" min="1" max="19" step="1" value="5" />
+  </div>
+  <div class="atlas-btn" id="btnLocate" title="Locate me">◎</div>
+</div>
+
+<div class="atlas-attrib" id="attrib" style="display:none">© OpenStreetMap contributors</div>
+<div class="atlas-scale" id="scale" style="display:none"></div>
+
+<script>
+/*
+  Atlas.js — Ultimate Edition (single-file)
+  - No external libs
+  - Features: smooth pan/zoom with inertia, tile layers, markers/popups, controls, touch/pinch, geolocation
+  - API (basic): new Atlas(container, options)
+      atlas.setView(lat,lng,zoom,animate)
+      atlas.addTileLayer({name, url, maxZoom, minZoom, subdomains})
+      atlas.addMarker({lat,lng,html,draggable})
+      atlas.on(event, fn) / off / emit
+      atlas.fitBounds([[lat,lng],[lat,lng]],padding)
+*/
+
+(function(global){
+  // Helper utilities
+  const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+  const toRad = v => v * Math.PI / 180;
+  const toDeg = v => v * 180 / Math.PI;
+  const now = () => performance.now();
+  function easeOutCubic(t){ return 1 - Math.pow(1 - t, 3); }
+
+  // Tile utilities (Web Mercator)
+  function latLngToPoint(lat, lng, zoom, tileSize=256){
+    const sin = Math.sin(toRad(lat));
+    const scale = tileSize * Math.pow(2, zoom);
+    const x = (lng + 180) / 360 * scale;
+    const y = (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * scale;
+    return {x,y};
+  }
+  function pointToLatLng(x, y, zoom, tileSize=256){
+    const scale = tileSize * Math.pow(2, zoom);
+    const lng = x / scale * 360 - 180;
+    const n = Math.PI - 2 * Math.PI * y / scale;
+    const lat = toDeg(Math.atan(0.5 * (Math.exp(n) - Math.exp(-n))));
+    return {lat, lng};
+  }
+
+  // Default error tile (plain)
+  const defaultErrorTile = (() => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 256;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#cfeff7'; ctx.fillRect(0,0,256,256);
+    ctx.fillStyle = '#b4d6df'; ctx.fillRect(0,0,256,28);
+    ctx.fillStyle = '#999'; ctx.font = '12px sans-serif'; ctx.fillText('Tile not available', 10, 18);
+    return c.toDataURL();
+  })();
+
+  // Basic event emitter
+  class Emitter {
+    constructor(){ this._e = {}; }
+    on(k,fn){ (this._e[k] || (this._e[k]=[])).push(fn); return this; }
+    off(k,fn){ if(!this._e[k]) return this; this._e[k]=this._e[k].filter(f=>f!==fn); return this; }
+    emit(k,...a){ (this._e[k]||[]).slice().forEach(f=>f(...a)); return this; }
+  }
+
+  class Atlas extends Emitter {
+    constructor(container, options={}){
+      super();
+      this.container = (typeof container === 'string') ? document.getElementById(container) : container;
+      if(!this.container) throw new Error('Container not found');
+      // Options
+      this.tileSize = options.tileSize || 256;
+      this.minZoom = (options.minZoom === undefined) ? 1 : options.minZoom;
+      this.maxZoom = options.maxZoom || 19;
+      this.zoom = clamp(options.zoom || 5, this.minZoom, this.maxZoom);
+      this.center = options.center || {lat: 0, lng: 0};
+      this.layers = []; // tile layers
+      this.activeLayerIndex = 0;
+      this.tiles = new Map();
+      this.markers = [];
+      this.animating = false;
+
+      // internal pan state
+      this._isDragging=false; this._dragStart=null; this._dragOriginCenter=null;
+      this.velocity = {x:0,y:0}; this.lastMoveTime = 0; this.lastPos = null;
+      this._frameId = null;
+
+      // create DOM
+      this._root = document.createElement('div'); this._root.className = 'atlas-root';
+      this._layerContainer = document.createElement('div'); this._layerContainer.className = 'atlas-layer';
+      this._overlay = document.createElement('div'); this._overlay.className = 'atlas-layer'; // for markers/popups
+      this._overlay.style.pointerEvents = 'none';
+      this._popup = null;
+
+      this._root.appendChild(this._layerContainer);
+      this._root.appendChild(this._overlay);
+      this.container.appendChild(this._root);
+
+      // Attach events
+      this._bindDOM();
+
+      // Attach default OSM base
+      this.addTileLayer({
+        name: 'OpenStreetMap',
+        url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+        attribution: '© OpenStreetMap contributors',
+        maxZoom: 19
+      });
+
+      // initial render
+      this.render();
+
+      // Controls optionally auto-add
+      if(options.controls !== false) this._attachControls(options.controls || {});
+    }
+
+    // Public API
+    addTileLayer(cfg){
+      // cfg: {name,url, attribution, subdomains, minZoom, maxZoom, retina}
+      this.layers.push(Object.assign({
+        subdomains: ['a','b','c'],
+        minZoom: this.minZoom,
+        maxZoom: this.maxZoom,
+        retina: false
+      }, cfg));
+      this.emit('layeradd', this.layers[this.layers.length-1]);
+      return this;
+    }
+
+    setBaseLayer(indexOrName){
+      if(typeof indexOrName === 'number') this.activeLayerIndex = clamp(indexOrName, 0, this.layers.length-1);
+      else {
+        const idx = this.layers.findIndex(l=>l.name === indexOrName);
+        if(idx>=0) this.activeLayerIndex = idx;
+      }
+      this.clearTiles(); this.render();
+      return this;
+    }
+
+    setView(lat, lng, z, animate = true){
+      z = clamp(z, this.minZoom, this.maxZoom);
+      if(animate){
+        this._startAnimatedMove({lat,lng,zoom:z});
+      } else {
+        this.center = {lat,lng}; this.zoom = z; this.clearTiles(); this.render();
+      }
+      return this;
+    }
+
+    getCenter(){ return {...this.center}; }
+    getZoom(){ return this.zoom; }
+
+    addMarker({lat,lng,html,draggable=false, id}){
+      const m = {lat, lng, html, draggable, id: id||('m'+Math.random().toString(36).slice(2))};
+      this.markers.push(m);
+      this.renderMarkers();
+      this.emit('markeradd', m);
+      return m;
+    }
+
+    removeMarker(id){
+      const idx = this.markers.findIndex(m=>m.id===id);
+      if(idx>=0) this.markers.splice(idx,1);
+      this.renderMarkers();
+      return this;
+    }
+
+    fitBounds(bounds, options = {}){
+      // bounds: [[lat,lng],[lat,lng]]
+      const [[sLat,sLng],[nLat,nLng]] = bounds;
+      const rect = this.container.getBoundingClientRect();
+      // compute zoom that fits both points with padding
+      // approximate by trying zoom levels
+      for(let z=this.maxZoom; z>=this.minZoom; z--){
+        const p1 = latLngToPoint(sLat,sLng,z,this.tileSize);
+        const p2 = latLngToPoint(nLat,nLng,z,this.tileSize);
+        const w = Math.abs(p2.x - p1.x);
+        const h = Math.abs(p2.y - p1.y);
+        const pad = options.padding || 40;
+        if(w + pad < rect.width && h + pad < rect.height){
+          const centerPx = {x:(p1.x+p2.x)/2, y:(p1.y+p2.y)/2};
+          const centerLL = pointToLatLng(centerPx.x, centerPx.y, z, this.tileSize);
+          return this.setView(centerLL.lat, centerLL.lng, z, options.animate !== false);
+        }
+      }
+      // fallback to center and min zoom
+      const centerLat = (sLat + nLat)/2;
+      const centerLng = (sLng + nLng)/2;
+      return this.setView(centerLat, centerLng, this.minZoom, options.animate !== false);
+    }
+
+    onClick(callback){
+      this.on('click', callback);
+      return this;
+    }
+
+    // Internal: binding DOM events
+    _bindDOM(){
+      const c = this.container;
+      // Mouse
+      c.addEventListener('mousedown', e => {
+        e.preventDefault();
+        this._wheelOrDragStart(e.clientX, e.clientY);
+      }, {passive:false});
+      window.addEventListener('mousemove', (e)=>{
+        if(this._isDragging) { e.preventDefault(); this._wheelOrDragMove(e.clientX, e.clientY); }
+      }, {passive:false});
+      window.addEventListener('mouseup', () => {
+        if(this._isDragging) this._wheelOrDragEnd();
+      });
+
+      // Wheel zoom
+      c.addEventListener('wheel', e => {
+        e.preventDefault();
+        const delta = e.deltaY < 0 ? 1 : -1;
+        this._zoomAroundPoint(delta, e.clientX, e.clientY);
+      }, {passive:false});
+
+      // Double click to zoom in
+      c.addEventListener('dblclick', e => {
+        e.preventDefault();
+        this._zoomAroundPoint(1, e.clientX, e.clientY, true);
+      });
+
+      // Touch: pan + pinch
+      let lastTouchDistance = null;
+      c.addEventListener('touchstart', e => {
+        if(e.touches.length === 1){
+          const t = e.touches[0];
+          this._wheelOrDragStart(t.clientX, t.clientY);
+        } else if(e.touches.length === 2){
+          lastTouchDistance = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+          );
+          this._pinchMid = { x: (e.touches[0].clientX + e.touches[1].clientX)/2, y: (e.touches[0].clientY + e.touches[1].clientY)/2 };
+        }
+      }, {passive:false});
+
+      c.addEventListener('touchmove', e => {
+        e.preventDefault();
+        if(e.touches.length === 1 && this._isDragging){
+          const t = e.touches[0];
+          this._wheelOrDragMove(t.clientX, t.clientY);
+        } else if(e.touches.length === 2){
+          const d = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+          );
+          if(lastTouchDistance){
+            const deltaScale = d - lastTouchDistance;
+            const delta = deltaScale > 0 ? 1 : -1;
+            // approximate zoom around midpoint
+            this._zoomAroundPoint(delta, this._pinchMid.x, this._pinchMid.y);
+          }
+          lastTouchDistance = d;
+        }
+      }, {passive:false});
+
+      c.addEventListener('touchend', e => {
+        this._wheelOrDragEnd();
+        lastTouchDistance = null;
+      });
+
+      // click detection
+      c.addEventListener('click', e => {
+        const rc = this.container.getBoundingClientRect();
+        const pt = {x: e.clientX - rc.left, y: e.clientY - rc.top};
+        // map click -> lat/lng
+        const centerPoint = latLngToPoint(this.center.lat, this.center.lng, this.zoom, this.tileSize);
+        const mapPoint = {x: centerPoint.x - rc.width/2 + pt.x, y: centerPoint.y - rc.height/2 + pt.y};
+        const ll = pointToLatLng(mapPoint.x, mapPoint.y, this.zoom, this.tileSize);
+        this.emit('click', ll, e);
+      });
+    }
+
+    // Dragging/panning internals (mouse & single touch)
+    _wheelOrDragStart(clientX, clientY){
+      this._isDragging = true;
+      this._dragStart = {x:clientX, y:clientY};
+      this._dragOriginCenter = {...this.center};
+      this.velocity = {x:0,y:0};
+      this.lastMoveTime = now();
+      this.lastPos = {x: clientX, y: clientY};
+      // cancel ongoing animation
+      if(this._frameId) cancelAnimationFrame(this._frameId);
+    }
+    _wheelOrDragMove(clientX, clientY){
+      if(!this._isDragging) return;
+      const dx = clientX - this._dragStart.x;
+      const dy = clientY - this._dragStart.y;
+      const rect = this.container.getBoundingClientRect();
+      const centerPx = latLngToPoint(this._dragOriginCenter.lat, this._dragOriginCenter.lng, this.zoom, this.tileSize);
+      const newCenterPx = { x: centerPx.x - dx, y: centerPx.y - dy };
+      const newCenter = pointToLatLng(newCenterPx.x, newCenterPx.y, this.zoom, this.tileSize);
+      this.center = newCenter;
+      // velocity (pixels/ms)
+      const t = now();
+      const dt = Math.max(1, t - this.lastMoveTime);
+      this.velocity.x = (clientX - this.lastPos.x) / dt;
+      this.velocity.y = (clientY - this.lastPos.y) / dt;
+      this.lastMoveTime = t;
+      this.lastPos = {x: clientX, y: clientY};
+      this.render();
+    }
+    _wheelOrDragEnd(){
+      if(!this._isDragging) return;
+      this._isDragging = false;
+      // apply inertia if significant velocity
+      const speed = Math.hypot(this.velocity.x, this.velocity.y);
+      if(speed > 0.02){
+        const decay = 0.95;
+        const step = () => {
+          // each tick move center by velocity*dt*1000 (convert to px)
+          this.velocity.x *= decay; this.velocity.y *= decay;
+          const rect = this.container.getBoundingClientRect();
+          const centerPx = latLngToPoint(this.center.lat, this.center.lng, this.zoom, this.tileSize);
+          const newCenterPx = { x: centerPx.x - this.velocity.x * 16 * 60, y: centerPx.y - this.velocity.y * 16 * 60 };
+          this.center = pointToLatLng(newCenterPx.x, newCenterPx.y, this.zoom, this.tileSize);
+          this.render();
+          if(Math.hypot(this.velocity.x, this.velocity.y) > 0.001){
+            this._frameId = requestAnimationFrame(step);
+          } else {
+            this._frameId = null;
+          }
+        };
+        this._frameId = requestAnimationFrame(step);
+      }
+    }
+
+    // Zoom around a screen point
+    _zoomAroundPoint(delta, clientX, clientY, animate=false){
+      const oldZoom = this.zoom;
+      const newZoom = clamp(this.zoom + delta, this.minZoom, this.maxZoom);
+      if(newZoom === oldZoom) return;
+      // compute latlng of point under cursor and keep it under cursor after zoom
+      const rc = this.container.getBoundingClientRect();
+      const cursor = {x: clientX - rc.left, y: clientY - rc.top};
+      const centerPoint = latLngToPoint(this.center.lat, this.center.lng, oldZoom, this.tileSize);
+      const mapPoint = {x: centerPoint.x - rc.width/2 + cursor.x, y: centerPoint.y - rc.height/2 + cursor.y};
+      // when zoom changes, mapPoint in new zoom is scaled by 2^(new-old)
+      const scaleFactor = Math.pow(2, newZoom - oldZoom);
+      const newMapPoint = { x: mapPoint.x * scaleFactor, y: mapPoint.y * scaleFactor };
+      // new center in pixels
+      const newCenterPx = { x: newMapPoint.x - (cursor.x - rc.width/2), y: newMapPoint.y - (cursor.y - rc.height/2) };
+      const newCenterLL = pointToLatLng(newCenterPx.x, newCenterPx.y, newZoom, this.tileSize);
+      if(animate){
+        this._startAnimatedMove({lat:newCenterLL.lat, lng:newCenterLL.lng, zoom:newZoom});
+      } else {
+        this.center = newCenterLL; this.zoom = newZoom; this.clearTiles(); this.render();
+      }
+    }
+
+    // Animated pan/zoom to a target view
+    _startAnimatedMove(target){
+      const start = {lat:this.center.lat, lng:this.center.lng, zoom:this.zoom};
+      const dur = 400;
+      const t0 = now();
+      const step = () => {
+        const t = clamp((now() - t0)/dur, 0, 1);
+        const e = easeOutCubic(t);
+        this.center.lat = start.lat + (target.lat - start.lat) * e;
+        this.center.lng = start.lng + (target.lng - start.lng) * e;
+        this.zoom = start.zoom + (target.zoom - start.zoom) * e;
+        this.clearTiles(); this.render();
+        if(t < 1) requestAnimationFrame(step);
+      };
+      step();
+    }
+
+    clearTiles(){ this.tiles.clear(); this._layerContainer.innerHTML = ''; }
+
+    // Core render: tiles and markers
+    render(){
+      const rc = this.container.getBoundingClientRect();
+      const centerPx = latLngToPoint(this.center.lat, this.center.lng, Math.floor(this.zoom), this.tileSize);
+      // we’ll render at integer zoom only for tile selection, but markers and centering use fractional zoom via CSS scale if needed
+      const z = Math.round(this.zoom);
+      const scale = Math.pow(2, this.zoom - z);
+      const tileScale = this.tileSize * scale;
+
+      // compute tile range
+      const leftPx = centerPx.x - rc.width / 2;
+      const topPx = centerPx.y - rc.height / 2;
+      const startX = Math.floor(leftPx / this.tileSize) - 1;
+      const startY = Math.floor(topPx / this.tileSize) - 1;
+      const endX = Math.floor((leftPx + rc.width) / this.tileSize) + 1;
+      const endY = Math.floor((topPx + rc.height) / this.tileSize) + 1;
+
+      // clean layer
+      this._layerContainer.innerHTML = '';
+      // Draw tiles
+      const layer = this.layers[this.activeLayerIndex] || this.layers[0];
+      const url = layer && layer.url ? layer.url : null;
+      for(let tx = startX; tx <= endX; tx++){
+        for(let ty = startY; ty <= endY; ty++){
+          // wrap X for global tiles
+          const numTiles = Math.pow(2, z);
+          const wrappedX = ((tx % numTiles) + numTiles) % numTiles;
+          const wrappedY = ty;
+          // skip Y outside bounds
+          if(wrappedY < 0 || wrappedY >= numTiles) continue;
+          const img = document.createElement('img');
+          img.className = 'atlas-tile';
+          img.width = this.tileSize; img.height = this.tileSize;
+          const left = tx * this.tileSize - leftPx;
+          const top = ty * this.tileSize - topPx;
+          img.style.left = left + 'px';
+          img.style.top = top + 'px';
+          // set src safely
+          if(url){
+            const src = url.replace('{z}', z).replace('{x}', wrappedX).replace('{y}', wrappedY);
+            img.src = src;
+            img.onerror = ()=> img.src = defaultErrorTile;
+          } else img.src = defaultErrorTile;
+          this._layerContainer.appendChild(img);
+        }
+      }
+
+      // apply CSS transform for fractional zoom to create smooth scaling
+      // compute scale relative to integer tiles
+      const fractional = Math.pow(2, this.zoom - z);
+      // center alignment: translate so center pixel remains centered after scaling
+      const transformX = -(leftPx - Math.floor(leftPx)) * fractional;
+      const transformY = -(topPx - Math.floor(topPx)) * fractional;
+      this._layerContainer.style.transformOrigin = '0 0';
+      this._layerContainer.style.transform = `translate(${transformX}px,${transformY}px) scale(${fractional})`;
+
+      // markers/popups layer
+      this.renderMarkers();
+
+      // attribution and scale
+      const attribEl = document.getElementById('attrib');
+      if(attribEl){ attribEl.style.display = 'block'; attribEl.textContent = layer && layer.attribution ? layer.attribution : '' }
+      const scaleEl = document.getElementById('scale');
+      if(scaleEl){
+        scaleEl.style.display = 'block';
+        // compute approximate meters per pixel at center lat
+        const metersPerPixel = 156543.03392 * Math.cos(toRad(this.center.lat)) / Math.pow(2, this.zoom);
+        // choose nice scale in meters
+        const displayMeters = [1,2,5,10,20,50,100,200,500,1000,2000,5000,10000,20000,50000,100000];
+        const pxWidth = 100; // show approx 100px scale
+        const meters = metersPerPixel * pxWidth;
+        let pick = displayMeters[0];
+        for(const m of displayMeters){ if(m >= meters) { pick = m; break; } }
+        const shownPx = Math.round(pick / metersPerPixel);
+        scaleEl.innerHTML = `<div style="width:${shownPx}px; height:6px; background:white; display:inline-block; vertical-align:middle; margin-right:6px"></div>${pick} m`;
+      }
+
+      // triggers
+      this.emit('render', {center:this.center, zoom:this.zoom});
+    }
+
+    renderMarkers(){
+      const rc = this.container.getBoundingClientRect();
+      this._overlay.innerHTML = ''; // clear
+      // draw markers
+      for(const m of this.markers){
+        const pos = latLngToPoint(m.lat, m.lng, this.zoom, this.tileSize);
+        const centerPx = latLngToPoint(this.center.lat, this.center.lng, this.zoom, this.tileSize);
+        const screenX = pos.x - centerPx.x + rc.width/2;
+        const screenY = pos.y - centerPx.y + rc.height/2;
+        const el = document.createElement('div');
+        el.className = 'atlas-marker';
+        el.style.left = screenX + 'px';
+        el.style.top = screenY + 'px';
+        el.style.pointerEvents = 'auto';
+        const inner = document.createElement('div'); inner.className='dot';
+        el.appendChild(inner);
+        // popup handler
+        el.addEventListener('click', (ev)=>{
+          ev.stopPropagation();
+          this._showPopup(m, screenX, screenY);
+          this.emit('markerclick', m);
+        });
+        // draggable (simple)
+        if(m.draggable){
+          el.draggable = true;
+          el.addEventListener('dragstart', e=>e.dataTransfer.setData('text/plain', m.id));
+          el.addEventListener('dragend', e=>{
+            const rc = this.container.getBoundingClientRect();
+            const pt = {x: e.clientX - rc.left, y: e.clientY - rc.top};
+            const centerPx = latLngToPoint(this.center.lat, this.center.lng, this.zoom, this.tileSize);
+            const mapPointPx = {x: centerPx.x - rc.width/2 + pt.x, y: centerPx.y - rc.height/2 + pt.y};
+            const ll = pointToLatLng(mapPointPx.x, mapPointPx.y, this.zoom, this.tileSize);
+            m.lat = ll.lat; m.lng = ll.lng;
+            this.emit('markerdragend', m);
+            this.render();
+          });
+        }
+        this._overlay.appendChild(el);
+      }
+      // popup reflow (if any)
+      if(this._popup){
+        this._overlay.appendChild(this._popup.el);
+      }
+    }
+
+    _showPopup(marker, screenX, screenY){
+      // remove old
+      if(this._popup && this._popup.marker === marker) return; // already
+      if(this._popup){
+        this._popup.el.remove();
+        this._popup = null;
+      }
+      const el = document.createElement('div');
+      el.className = 'atlas-popup';
+      el.innerHTML = marker.html || `<strong>Marker</strong><br/>${marker.lat.toFixed(5)}, ${marker.lng.toFixed(5)}`;
+      el.style.left = screenX + 'px';
+      el.style.top = screenY + 'px';
+      el.addEventListener('click', e=> e.stopPropagation());
+      this._popup = {el, marker};
+      this._overlay.appendChild(el);
+      // close on next body click
+      const closer = ()=>{ if(this._popup){ this._popup.el.remove(); this._popup = null; document.removeEventListener('click', closer); } };
+      setTimeout(()=> document.addEventListener('click', closer), 10);
+    }
+
+    // Simple control injection for demo convenience
+    _attachControls(opts){
+      // show DOM controls if present in page
+      const controls = document.getElementById('controls');
+      if(controls){ controls.style.display = 'flex';
+        const zin = document.getElementById('btnZoomIn'); zin.onclick = ()=> this._zoomAroundPoint(1, this.container.getBoundingClientRect().left + this.container.clientWidth/2, this.container.getBoundingClientRect().top + this.container.clientHeight/2, true);
+        const zout = document.getElementById('btnZoomOut'); zout.onclick = ()=> this._zoomAroundPoint(-1, this.container.getBoundingClientRect().left + this.container.clientWidth/2, this.container.getBoundingClientRect().top + this.container.clientHeight/2, true);
+        const zrange = document.getElementById('zoomRange'); zrange.min = this.minZoom; zrange.max = this.maxZoom; zrange.value = Math.round(this.zoom);
+        zrange.oninput = (e)=> this.setView(this.center.lat, this.center.lng, parseInt(e.target.value), true);
+        const locate = document.getElementById('btnLocate'); locate.onclick = ()=> {
+          if(navigator.geolocation) navigator.geolocation.getCurrentPosition(p=>{
+            this.setView(p.coords.latitude, p.coords.longitude, 13, true);
+            this.addMarker({lat:p.coords.latitude, lng:p.coords.longitude, html: 'You are here', draggable:false});
+          }, err => alert('Geolocation error: '+err.message));
+        };
+      }
+      const lt = document.getElementById('layerToggle');
+      if(lt){ lt.style.display='flex'; lt.innerHTML = ''; this.layers.forEach((l, idx)=>{
+        const b = document.createElement('button'); b.className='atlas-layer-btn'; b.textContent = l.name || ('Layer '+(idx+1));
+        b.onclick = ()=> { this.setBaseLayer(idx); };
+        lt.appendChild(b);
+      }) }
+      const a = document.getElementById('attrib'); if(a) a.style.display='block';
+      const s = document.getElementById('scale'); if(s) s.style.display='block';
+    }
+  }
+
+  // expose
+  global.Atlas = Atlas;
+
+})(window);
+
+// ---------------- DEMO USAGE ----------------
+(function(){
+  const mapEl = document.getElementById('map');
+  const atlas = new Atlas(mapEl, {center:{lat:31.63, lng:-8.00}, zoom:6});
+
+  // Add a dark tiles layer example (Carto dark)
+  atlas.addTileLayer({
+    name:'Carto Dark',
+    url:'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+    subdomains:['a','b','c','d'],
+    attribution:'© Carto & OpenStreetMap'
+  });
+
+  // choose base (0 = default OSM)
+  atlas.setBaseLayer(0);
+
+  // Add some markers
+  atlas.addMarker({lat:33.5731, lng:-7.5898, html:'Casablanca', draggable:false});
+  atlas.addMarker({lat:35.7595, lng:-5.8340, html:'Tangier', draggable:false});
+  atlas.addMarker({lat:31.63, lng:-8.00, html:'Marrakech', draggable:false});
+
+  // expose atlas for console debugging
+  window.atlas = atlas;
+
+  // simple demo: click map to add marker
+  atlas.on('click', (ll,e) => {
+    atlas.addMarker({lat:ll.lat, lng:ll.lng, html:`Custom marker<br>${ll.lat.toFixed(5)}, ${ll.lng.toFixed(5)}`});
+  });
+
+  // UI wiring (controls & layers)
+  document.getElementById('controls').style.display='flex';
+  document.getElementById('layerToggle').style.display='flex';
+  document.getElementById('attrib').style.display='block';
+  document.getElementById('scale').style.display='block';
+  // initially populate layer buttons
+  const lt = document.getElementById('layerToggle');
+  lt.innerHTML = '';
+  atlas.layers.forEach((l, idx)=>{
+    const btn = document.createElement('button'); btn.className='atlas-layer-btn';
+    btn.textContent = l.name || `Layer ${idx}`;
+    btn.onclick = ()=> atlas.setBaseLayer(idx);
+    lt.appendChild(btn);
+  });
+})();
+</script>
+</body>
+</html>
