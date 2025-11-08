@@ -1,0 +1,3215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="referrer" content="origin">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Atlas.js - Lightweight JavaScript Mapping Library</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: #000;
+    }
+
+    #map-container {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      cursor: grab;
+      touch-action: none;
+    }
+
+    #map-container.dragging {
+      cursor: grabbing;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .atlas-control-container {
+      position: absolute;
+      z-index: 1000;
+      pointer-events: none;
+    }
+
+    .atlas-control-container > * {
+      pointer-events: auto;
+    }
+
+    .atlas-control-top-left {
+      top: 10px;
+      left: 10px;
+    }
+
+    .atlas-control-top-right {
+      top: 10px;
+      right: 10px;
+    }
+
+    .atlas-control-bottom-left {
+      bottom: 10px;
+      left: 10px;
+    }
+
+    .atlas-control-bottom-right {
+      bottom: 10px;
+      right: 10px;
+    }
+
+    .atlas-control-vertical {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .atlas-control-horizontal {
+      display: flex;
+      flex-direction: row;
+      gap: 5px;
+    }
+
+    .control-btn {
+      background: rgba(255, 255, 255, 0.9);
+      border: 1px solid #ccc;
+      font-size: 16px;
+      padding: 8px 10px;
+      cursor: pointer;
+      border-radius: 4px;
+      user-select: none;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      transition: all 0.15s ease;
+      min-width: 36px;
+      height: 36px;
+      text-align: center;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .control-btn:hover {
+      background: rgba(240, 240, 240, 0.95);
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+    }
+
+    .control-btn:active {
+      background: rgba(224, 224, 224, 0.95);
+      transform: scale(0.98);
+    }
+
+    .control-btn:focus {
+      outline: 2px solid #0078A8;
+      outline-offset: 2px;
+    }
+
+    .control-btn:disabled {
+      background: rgba(245, 245, 245, 0.9);
+      color: #aaa;
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+
+    #loading {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(255, 255, 255, 0.9);
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      display: none;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      font-weight: 500;
+    }
+
+    #loading.visible {
+      display: block;
+      animation: fadeIn 0.2s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    #attribution {
+      position: absolute;
+      bottom: 5px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.7);
+      color: #fff;
+      font-size: clamp(10px, 1.2vw, 12px);
+      padding: 6px 8px;
+      border-radius: 3px;
+      white-space: nowrap;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, 0.3) rgba(0, 0, 0, 0.7);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+      z-index: 1000;
+      max-width: 90%;
+    }
+
+    #attribution::-webkit-scrollbar {
+      height: 6px;
+    }
+
+    #attribution::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.7);
+      border-radius: 3px;
+    }
+
+    #attribution::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.3);
+      border-radius: 3px;
+    }
+
+    #attribution::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.5);
+    }
+
+    #attribution a {
+      color: #4d90fe;
+      text-decoration: none;
+      font-weight: bold;
+      margin-right: 8px;
+      transition: opacity 0.2s ease;
+    }
+
+    #attribution a:hover {
+      text-decoration: underline;
+      opacity: 0.9;
+    }
+
+    @keyframes zoom-indicator {
+      0% {
+        transform: scale(0.2);
+        opacity: 0.8;
+      }
+      100% {
+        transform: scale(1.2);
+        opacity: 0;
+      }
+    }
+
+    .atlas-no-select {
+      user-select: none;
+      -webkit-user-select: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="map-container">
+    <canvas id="map"></canvas>
+    <div id="loading">Loading: <span id="loading-count">0</span></div>
+    <div id="attribution"></div>
+  </div>
+
+  <script>
+    // ============================================================================
+    // CONSTANTS AND CONFIGURATION
+    // ============================================================================
+
+    const EARTH_RADIUS = 6378137;
+    const EARTH_CIRCUMFERENCE = 2 * Math.PI * EARTH_RADIUS;
+    const MAX_LATITUDE = 85.05112878;
+    const MIN_LATITUDE = -85.05112878;
+    const TILE_SIZE = 256;
+    const TILE_BUFFER = 3;
+    const TILE_TTL = 86400000; // 24 hours
+    const TILE_LOAD_TIMEOUT_MS = 8000;
+
+    // Physics constants
+    const INERTIA_DECEL = 0.0025;
+    const INERTIA_STOP_SPEED = 0.02;
+    const VELOCITY_WINDOW_MS = 120;
+
+    // Touch gesture constants
+    const DOUBLE_TAP_MAX_DELAY = 300;
+    const DOUBLE_TAP_MAX_MOVE = 16;
+    const TWO_FINGER_TAP_MAX_DELAY = 250;
+    const TWO_FINGER_TAP_MOVE_THRESH = 10;
+    const ROTATE_MOVE_THRESH_RAD = 0.08;
+
+    // Animation constants
+    const WHEEL_ZOOM_STEP = 0.25;
+    const WHEEL_ZOOM_DURATION = 220;
+    const TAP_ZOOM_DURATION = 280;
+    const SNAP_DURATION = 300;
+    const FLYTO_DURATION = 800;
+
+    // Math constants
+    const RAD2DEG = 180 / Math.PI;
+    const DEG2RAD = Math.PI / 180;
+    const TWO_PI = 2 * Math.PI;
+
+    // Layer configurations
+    const LAYERS = {
+      OSM: {
+        name: "OpenStreetMap",
+        minZoom: 0,
+        maxZoom: 19,
+        urlTemplate: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        subdomains: ['a', 'b', 'c'],
+        attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>',
+        background: "#e6e6e6",
+        supportsRetina: true,
+        maxCacheSize: 800
+      },
+      ESRI: {
+        name: "Esri Satellite",
+        minZoom: 0,
+        maxZoom: 19,
+        urlTemplate: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        attribution: 'Tiles © <a href="https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer" target="_blank" rel="noopener noreferrer">Esri</a>',
+        background: "#000000",
+        supportsRetina: false,
+        maxCacheSize: 600
+      },
+      ESRI_TOPO: {
+        name: "Esri Topographic",
+        minZoom: 0,
+        maxZoom: 19,
+        urlTemplate: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+        attribution: 'Tiles © <a href="https://services.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer" target="_blank" rel="noopener noreferrer">Esri</a>',
+        background: "#f5f5f0",
+        supportsRetina: false,
+        maxCacheSize: 600
+      }
+    };
+
+    const CONFIG = {
+      defaultLayer: "OSM",
+      defaultCenter: { lon: 0, lat: 0 },
+      defaultZoom: 3,
+      retina: "auto",
+      retinaSuffix: "@2x"
+    };
+
+    const EASING = {
+      linear: t => t,
+      easeInOutCubic: t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2,
+      easeOutCubic: t => 1 - Math.pow(1 - t, 3),
+      easeInCubic: t => t * t * t,
+      easeInOutQuad: t => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t
+    };
+
+    // ============================================================================
+    // UTILITY FUNCTIONS
+    // ============================================================================
+
+    function normalizeAngle(rad) {
+      return Math.atan2(Math.sin(rad), Math.cos(rad));
+    }
+
+    function shortestAngleDiff(from, to) {
+      return normalizeAngle(to - from);
+    }
+
+    function wrapDeltaLon(delta) {
+      delta = ((delta + 180) % 360 + 360) % 360 - 180;
+      return delta;
+    }
+
+    function wrapLongitude(lon) {
+      while (lon > 180) lon -= 360;
+      while (lon < -180) lon += 360;
+      return lon;
+    }
+
+    function clampLatitude(lat) {
+      return Math.max(MIN_LATITUDE, Math.min(MAX_LATITUDE, lat));
+    }
+
+    function rotate(x, y, angle) {
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+      return {
+        x: x * cos - y * sin,
+        y: x * sin + y * cos
+      };
+    }
+
+    function distance(x1, y1, x2, y2) {
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      return Math.hypot(dx, dy);
+    }
+
+    function pointInPolygon(x, y, ring) {
+      let inside = false;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const xi = ring[i].x;
+        const yi = ring[i].y;
+        const xj = ring[j].x;
+        const yj = ring[j].y;
+
+        const intersect = ((yi > y) !== (yj > y)) &&
+          (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    }
+
+    // ============================================================================
+    // PROJECTION SYSTEM
+    // ============================================================================
+
+    class Projection {
+      project(latlng) {
+        throw new Error('project() must be implemented');
+      }
+
+      unproject(point) {
+        throw new Error('unproject() must be implemented');
+      }
+
+      latLngToTile(latlng, zoom) {
+        throw new Error('latLngToTile() must be implemented');
+      }
+
+      tileToLatLng(x, y, zoom) {
+        throw new Error('tileToLatLng() must be implemented');
+      }
+    }
+
+    class WebMercatorProjection extends Projection {
+      project(latlng) {
+        const d = EARTH_RADIUS;
+        const lat = Math.max(MIN_LATITUDE, Math.min(MAX_LATITUDE, latlng.lat));
+        const sin = Math.sin(lat * DEG2RAD);
+        return {
+          x: d * latlng.lon * DEG2RAD,
+          y: d * Math.log((1 + sin) / (1 - sin)) / 2
+        };
+      }
+
+      unproject(point) {
+        const d = EARTH_RADIUS;
+        return {
+          lon: (point.x / d) * RAD2DEG,
+          lat: (2 * Math.atan(Math.exp(point.y / d)) - Math.PI / 2) * RAD2DEG
+        };
+      }
+
+      latLngToTile(latlng, zoom) {
+        const scale = Math.pow(2, zoom);
+        const p = this.project(latlng);
+        return {
+          x: (p.x + Math.PI * EARTH_RADIUS) / (2 * Math.PI * EARTH_RADIUS) * scale,
+          y: (Math.PI * EARTH_RADIUS - p.y) / (2 * Math.PI * EARTH_RADIUS) * scale
+        };
+      }
+
+      tileToLatLng(x, y, zoom) {
+        const scale = Math.pow(2, zoom);
+        const p = {
+          x: x / scale * 2 * Math.PI * EARTH_RADIUS - Math.PI * EARTH_RADIUS,
+          y: Math.PI * EARTH_RADIUS - y / scale * 2 * Math.PI * EARTH_RADIUS
+        };
+        return this.unproject(p);
+      }
+    }
+
+    const DEFAULT_PROJECTION = new WebMercatorProjection();
+
+    // ============================================================================
+    // GIS UTILITIES
+    // ============================================================================
+
+    class GISUtils {
+      static wrapLongitude(lon) {
+        return wrapLongitude(lon);
+      }
+
+      static clampLatitude(lat) {
+        return clampLatitude(lat);
+      }
+
+      static getResolution(lat, zoom) {
+        return (EARTH_CIRCUMFERENCE * Math.cos(lat * DEG2RAD)) / (Math.pow(2, zoom) * TILE_SIZE);
+      }
+
+      static formatDistance(meters) {
+        if (meters < 1000) {
+          return Math.round(meters) + " m";
+        }
+        return (meters / 1000).toFixed(1) + " km";
+      }
+
+      static tileToLatLng(x, y, z) {
+        return DEFAULT_PROJECTION.tileToLatLng(x, y, z);
+      }
+
+      static latLngToTile(lat, lng, z) {
+        return DEFAULT_PROJECTION.latLngToTile({ lat, lon: lng }, z);
+      }
+
+      static bearing(lat1, lon1, lat2, lon2) {
+        const dLon = (lon2 - lon1) * DEG2RAD;
+        const y = Math.sin(dLon) * Math.cos(lat2 * DEG2RAD);
+        const x = Math.cos(lat1 * DEG2RAD) * Math.sin(lat2 * DEG2RAD) -
+          Math.sin(lat1 * DEG2RAD) * Math.cos(lat2 * DEG2RAD) * Math.cos(dLon);
+        return Math.atan2(y, x);
+      }
+
+      static distance(lat1, lon1, lat2, lon2) {
+        const R = EARTH_RADIUS;
+        const dLat = (lat2 - lat1) * DEG2RAD;
+        const dLon = (lon2 - lon1) * DEG2RAD;
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(lat1 * DEG2RAD) * Math.cos(lat2 * DEG2RAD) *
+          Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.asin(Math.sqrt(a));
+        return R * c;
+      }
+    }
+
+    // ============================================================================
+    // BASE LAYER CLASS
+    // ============================================================================
+
+    class Layer {
+      constructor(options = {}) {
+        this.options = options;
+        this._map = null;
+        this._events = {};
+      }
+
+      addTo(map) {
+        if (this._map) this._map.removeLayer(this);
+        this._map = map;
+        if (map) {
+          map.addLayer(this);
+          this.onAdd();
+        }
+        return this;
+      }
+
+      remove() {
+        if (this._map) {
+          this._map.removeLayer(this);
+          this.onRemove();
+          this._map = null;
+        }
+        return this;
+      }
+
+      on(type, fn) {
+        if (!this._events[type]) this._events[type] = [];
+        this._events[type].push(fn);
+        return this;
+      }
+
+      off(type, fn) {
+        if (!this._events[type]) return this;
+        this._events[type] = this._events[type].filter(cb => cb !== fn);
+        return this;
+      }
+
+      fire(type, data = {}) {
+        if (!this._events[type]) return;
+        data.type = type;
+        data.target = this;
+        this._events[type].forEach(fn => {
+          try {
+            fn(data);
+          } catch (e) {
+            console.error(`[Atlas] Error in event listener for '${type}':`, e);
+          }
+        });
+      }
+
+      onAdd() { }
+      onRemove() { }
+      render() { }
+    }
+
+    // ============================================================================
+    // TILE LAYER IMPLEMENTATION
+    // ============================================================================
+
+    class TileLayer extends Layer {
+      constructor(urlTemplate, options = {}) {
+        super(options);
+        this.urlTemplate = urlTemplate;
+        this.options = {
+          minZoom: options.minZoom || 0,
+          maxZoom: options.maxZoom || 18,
+          attribution: options.attribution || '',
+          background: options.background || '#ffffff',
+          supportsRetina: options.supportsRetina || false,
+          maxCacheSize: options.maxCacheSize || 800,
+          subdomains: options.subdomains || null,
+          ...options
+        };
+
+        this.tileCache = new Map();
+        this.loadingTiles = new Set();
+        this.loadingControllers = new Map();
+        this._retinaAvailable = true;
+        this._lastRenderedState = {
+          center: null,
+          zoom: null,
+          bearing: null
+        };
+        this._renderTilesArray = [];
+      }
+
+      _getTileUrl(x, y, z) {
+        const scale = Math.pow(2, z);
+        let wrappedX = ((x % scale) + scale) % scale;
+        const intX = Math.floor(wrappedX);
+        const intY = Math.max(0, Math.min(scale - 1, Math.floor(y)));
+
+        let url = this.urlTemplate
+          .replace('{z}', z)
+          .replace('{x}', intX)
+          .replace('{y}', intY);
+
+        if (url.includes('{s}') && this.options.subdomains && this.options.subdomains.length > 0) {
+          const subdomain = this.options.subdomains[
+            Math.floor(Math.random() * this.options.subdomains.length)
+          ];
+          url = url.replace('{s}', subdomain);
+        }
+
+        if (this.options.supportsRetina && this._shouldRequestRetina()) {
+          url = url.replace(/\.(png|jpg|jpeg|webp)$/, `${CONFIG.retinaSuffix}.$1`);
+        }
+
+        return url;
+      }
+
+      _shouldRequestRetina() {
+        const mode = CONFIG.retina;
+        const dpr = window.devicePixelRatio || 1;
+
+        if (mode === true) return this._retinaAvailable;
+        if (mode === "auto") return this._retinaAvailable && dpr > 1.5;
+        return false;
+      }
+
+      async _loadTile(key, url) {
+        if (this.tileCache.has(key)) {
+          const cached = this.tileCache.get(key);
+          cached.lastUsed = Date.now();
+          return cached;
+        }
+
+        const controller = new AbortController();
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+
+        const tile = {
+          img,
+          loaded: false,
+          loadedAt: Date.now(),
+          lastUsed: Date.now(),
+          controller,
+          url
+        };
+
+        this.tileCache.set(key, tile);
+        this.loadingTiles.add(key);
+        this.loadingControllers.set(key, controller);
+
+        return new Promise((resolve, reject) => {
+          const timeoutId = setTimeout(() => {
+            if (this.loadingTiles.has(key)) {
+              controller.abort();
+              console.warn(`[Atlas] Tile load timeout: ${url}`);
+              this.loadingTiles.delete(key);
+              this.loadingControllers.delete(key);
+              this.tileCache.delete(key);
+              this.fire('tileerror', { tile: key, url, error: new Error('Timeout') });
+              reject(new Error(`Timeout loading tile: ${url}`));
+            }
+          }, TILE_LOAD_TIMEOUT_MS);
+
+          img.onload = () => {
+            clearTimeout(timeoutId);
+            if (controller.signal.aborted) {
+              reject(new Error('Load aborted'));
+              return;
+            }
+            tile.loaded = true;
+            tile.loadedAt = Date.now();
+            this.loadingTiles.delete(key);
+            this.loadingControllers.delete(key);
+            if (this._map) {
+              this._map.scheduleRender();
+            }
+            this.fire('tileload', { tile: key, url });
+            resolve(tile);
+          };
+
+          img.onerror = (error) => {
+            clearTimeout(timeoutId);
+            if (controller.signal.aborted) {
+              reject(new Error('Load aborted'));
+              return;
+            }
+
+            console.warn(`[Atlas] Failed to load tile: ${url}`, error);
+
+            if (this.options.supportsRetina && url.includes(CONFIG.retinaSuffix)) {
+              this._retinaAvailable = false;
+              console.info('[Atlas] Retina tiles not available. Disabling retina mode.');
+              const standardUrl = url.replace(new RegExp(CONFIG.retinaSuffix, 'g'), '');
+              img.src = standardUrl;
+              return;
+            }
+
+            this.loadingTiles.delete(key);
+            this.loadingControllers.delete(key);
+            this.tileCache.delete(key);
+            this.fire('tileerror', { tile: key, url, error });
+            reject(error);
+          };
+
+          img.src = url;
+        });
+      }
+
+      _reloadTile(key, url) {
+        const existing = this.tileCache.get(key);
+        if (!existing) return;
+
+        const reloadKey = key + '#reload';
+        if (this.loadingTiles.has(reloadKey)) return;
+
+        const performReload = () => {
+          const img = new Image();
+          img.crossOrigin = "anonymous";
+          this.loadingTiles.add(reloadKey);
+
+          img.onload = () => {
+            existing.img = img;
+            existing.loaded = true;
+            existing.loadedAt = Date.now();
+            this.loadingTiles.delete(reloadKey);
+            if (this._map) this._map.scheduleRender();
+            this.fire('tileupdate', { tile: key });
+          };
+
+          img.onerror = () => {
+            this.loadingTiles.delete(reloadKey);
+          };
+
+          const separator = url.includes('?') ? '&' : '?';
+          img.src = url + separator + 't=' + Date.now();
+        };
+
+        if ('requestIdleCallback' in window) {
+          requestIdleCallback(performReload, { timeout: 2000 });
+        } else {
+          setTimeout(performReload, 100);
+        }
+      }
+
+      _evictCache() {
+        if (this.tileCache.size <= this.options.maxCacheSize) return;
+
+        const performEviction = () => {
+          if (this.tileCache.size <= this.options.maxCacheSize) return;
+
+          const entries = Array.from(this.tileCache.entries())
+            .sort((a, b) => a[1].lastUsed - b[1].lastUsed);
+
+          const removeCount = Math.max(1, Math.floor((this.tileCache.size - this.options.maxCacheSize) * 1.2));
+
+          for (let i = 0; i < removeCount && i < entries.length; i++) {
+            const [key, tile] = entries[i];
+            const controller = this.loadingControllers.get(key);
+            if (controller) controller.abort();
+            this.tileCache.delete(key);
+            this.loadingTiles.delete(key);
+            this.loadingControllers.delete(key);
+          }
+        };
+
+        if ('requestIdleCallback' in window) {
+          requestIdleCallback(performEviction, { timeout: 2000 });
+        } else {
+          setTimeout(performEviction, 100);
+        }
+      }
+
+      _preloadAdjacentTiles() {
+        if (!this._map) return;
+
+        const zInt = Math.floor(this._map.zoom);
+        const adjacentZooms = [
+          Math.max(this.options.minZoom, zInt - 1),
+          Math.min(this.options.maxZoom, zInt + 1)
+        ].filter(z => z !== zInt);
+
+        if (Math.abs(this._map.zoom - zInt) > 0.3) return;
+
+        const wrappedCenterLon = wrapLongitude(this._map.center.lon);
+        const ct = this._map.projection.latLngToTile(
+          { lat: this._map.center.lat, lon: wrappedCenterLon },
+          zInt
+        );
+
+        const ts = TILE_SIZE;
+        const w = this._map.canvas.width / this._map.dpr;
+        const h = this._map.canvas.height / this._map.dpr;
+        const viewportTiles = Math.ceil(Math.max(w, h) / ts) + TILE_BUFFER;
+
+        for (const dz of adjacentZooms) {
+          const scaleDiff = Math.pow(2, Math.abs(dz - zInt));
+          const startX = Math.floor(
+            ct.x * (dz > zInt ? scaleDiff : 1 / scaleDiff) - viewportTiles / 2
+          );
+          const startY = Math.floor(
+            ct.y * (dz > zInt ? scaleDiff : 1 / scaleDiff) - viewportTiles / 2
+          );
+
+          for (let dx = 0; dx < viewportTiles; dx++) {
+            for (let dy = 0; dy < viewportTiles; dy++) {
+              const X = startX + dx;
+              const Y = startY + dy;
+              const key = `${dz}/${X}/${Y}`;
+
+              if (!this.tileCache.has(key) && !this.loadingTiles.has(key)) {
+                const url = this._getTileUrl(X, Y, dz);
+                this._loadTile(key, url).catch(e => {
+                  // Silently handle preload errors
+                });
+              }
+            }
+          }
+        }
+      }
+
+      render() {
+        if (!this._map) return;
+
+        const ctx = this._map.ctx;
+        const w = this._map.canvas.width / this._map.dpr;
+        const h = this._map.canvas.height / this._map.dpr;
+        const zInt = Math.floor(this._map.zoom);
+        const scaleFactor = Math.pow(2, this._map.zoom - zInt);
+        const ts = TILE_SIZE;
+
+        const wrappedCenterLon = wrapLongitude(this._map.center.lon);
+        const ct = this._map.projection.latLngToTile(
+          { lat: this._map.center.lat, lon: wrappedCenterLon },
+          zInt
+        );
+
+        const absCos = Math.abs(Math.cos(this._map.bearing));
+        const absSin = Math.abs(Math.sin(this._map.bearing));
+        const needW = w * absCos + h * absSin;
+        const needH = w * absSin + h * absCos;
+
+        const cols = Math.ceil(needW / (ts * scaleFactor)) + TILE_BUFFER;
+        const rows = Math.ceil(needH / (ts * scaleFactor)) + TILE_BUFFER;
+        const startX = Math.floor(ct.x - cols / 2);
+        const startY = Math.floor(ct.y - rows / 2);
+
+        this._renderTilesArray.length = 0;
+        const centerX = cols / 2;
+        const centerY = rows / 2;
+
+        for (let dx = 0; dx < cols; dx++) {
+          for (let dy = 0; dy < rows; dy++) {
+            const X = startX + dx;
+            const Y = startY + dy;
+            const distSq = (dx - centerX) ** 2 + (dy - centerY) ** 2;
+            this._renderTilesArray.push({ X, Y, distSq });
+          }
+        }
+
+        // Sort by distance from center (render closest tiles first)
+        this._renderTilesArray.sort((a, b) => a.distSq - b.distSq);
+
+        ctx.save();
+        ctx.translate(w / 2, h / 2);
+        ctx.rotate(this._map.bearing);
+        ctx.scale(scaleFactor, scaleFactor);
+        ctx.imageSmoothingEnabled = this._map.zoom > zInt + 0.5;
+
+        for (const { X, Y } of this._renderTilesArray) {
+          const key = `${zInt}/${X}/${Y}`;
+          const url = this._getTileUrl(X, Y, zInt);
+
+          let tile = this.tileCache.get(key);
+          if (!tile) {
+            this._loadTile(key, url).catch(e => {
+              // Handle load error
+            });
+            continue;
+          }
+
+          if (tile.loaded && tile.img) {
+            try {
+              ctx.drawImage(tile.img, (X - ct.x) * ts, (Y - ct.y) * ts, ts, ts);
+              tile.lastUsed = Date.now();
+
+              // Check if tile needs refreshing
+              if (tile.loadedAt && Date.now() - tile.loadedAt > TILE_TTL) {
+                this._reloadTile(key, url);
+              }
+            } catch (e) {
+              console.warn(`[Atlas] Error drawing tile ${key}:`, e);
+            }
+          }
+        }
+
+        ctx.restore();
+
+        this._evictCache();
+        this._preloadAdjacentTiles();
+
+        this._lastRenderedState = {
+          center: { ...this._map.center },
+          zoom: this._map.zoom,
+          bearing: this._map.bearing
+        };
+      }
+
+      onAdd() {
+        this.fire('add');
+      }
+
+      onRemove() {
+        // Abort all loading tiles
+        for (const [key, controller] of this.loadingControllers) {
+          controller.abort();
+        }
+        this.loadingTiles.clear();
+        this.loadingControllers.clear();
+        this.tileCache.clear();
+        this.fire('remove');
+      }
+
+      getAttribution() {
+        return this.options.attribution;
+      }
+
+      getBackground() {
+        return this.options.background;
+      }
+
+      getMinZoom() {
+        return this.options.minZoom;
+      }
+
+      getMaxZoom() {
+        return this.options.maxZoom;
+      }
+
+      clearCache() {
+        this.tileCache.clear();
+        this.loadingTiles.clear();
+        for (const controller of this.loadingControllers.values()) {
+          controller.abort();
+        }
+        this.loadingControllers.clear();
+        if (this._map) this._map.render();
+        return this;
+      }
+    }
+
+    // ============================================================================
+    // GEOJSON LAYER IMPLEMENTATION
+    // ============================================================================
+
+    class GeoJSONLayer extends Layer {
+      constructor(geojson, options = {}) {
+        super(options);
+        this._geojson = this._normalizeGeoJSON(geojson);
+        this._features = [];
+        this._featureCache = new Map();
+        this._cachedScreenCoords = new WeakMap();
+        this._lastRenderState = {
+          zoom: null,
+          bearing: null,
+          center: null
+        };
+
+        this.options = {
+          style: options.style || {
+            color: '#3388ff',
+            weight: 3,
+            opacity: 1,
+            fillColor: '#3388ff',
+            fillOpacity: 0.2,
+            radius: 5
+          },
+          interactive: options.interactive !== false,
+          onEachFeature: options.onEachFeature || null,
+          filter: options.filter || null,
+          ...options
+        };
+
+        this._onMouseMove = this._onMouseMove.bind(this);
+        this._onMouseOut = this._onMouseOut.bind(this);
+        this._onClick = this._onClick.bind(this);
+      }
+
+      _normalizeGeoJSON(input) {
+        if (Array.isArray(input)) {
+          return {
+            type: 'FeatureCollection',
+            features: input.map(f =>
+              f.type === 'Feature' ? f : {
+                type: 'Feature',
+                geometry: f,
+                properties: {}
+              }
+            )
+          };
+        }
+
+        if (input.type === 'FeatureCollection') {
+          return input;
+        }
+
+        if (input.type === 'Feature') {
+          return {
+            type: 'FeatureCollection',
+            features: [input]
+          };
+        }
+
+        return {
+          type: 'FeatureCollection',
+          features: [{
+            type: 'Feature',
+            geometry: input,
+            properties: {}
+          }]
+        };
+      }
+
+      _latLngToScreenPoint(coord) {
+        if (!this._map) return { x: 0, y: 0 };
+        const [lon, lat] = coord;
+        return this._map.latLngToContainerPoint({ lat, lon });
+      }
+
+      _getFeatureStyle(feature) {
+        if (typeof this.options.style === 'function') {
+          return this.options.style(feature);
+        }
+        return this.options.style;
+      }
+
+      _processFeature(feature) {
+        const cacheKey = feature.id || JSON.stringify(feature.geometry);
+        if (this._featureCache.has(cacheKey)) {
+          return this._featureCache.get(cacheKey);
+        }
+
+        const geometry = feature.geometry;
+        const processed = {
+          type: geometry.type,
+          coordinates: null,
+          properties: feature.properties || {},
+          originalFeature: feature,
+          id: feature.id
+        };
+
+        try {
+          switch (geometry.type) {
+            case 'Point':
+              processed.coordinates = this._latLngToScreenPoint(geometry.coordinates);
+              break;
+
+            case 'MultiPoint':
+              processed.coordinates = geometry.coordinates.map(coord =>
+                this._latLngToScreenPoint(coord)
+              );
+              break;
+
+            case 'LineString':
+              processed.coordinates = geometry.coordinates.map(coord =>
+                this._latLngToScreenPoint(coord)
+              );
+              break;
+
+            case 'MultiLineString':
+              processed.coordinates = geometry.coordinates.map(ring =>
+                ring.map(coord => this._latLngToScreenPoint(coord))
+              );
+              break;
+
+            case 'Polygon':
+              processed.coordinates = geometry.coordinates.map(ring =>
+                ring.map(coord => this._latLngToScreenPoint(coord))
+              );
+              break;
+
+            case 'MultiPolygon':
+              processed.coordinates = geometry.coordinates.map(polygon =>
+                polygon.map(ring =>
+                  ring.map(coord => this._latLngToScreenPoint(coord))
+                )
+              );
+              break;
+
+            default:
+              console.warn('[Atlas] Unsupported geometry type:', geometry.type);
+              return null;
+          }
+        } catch (e) {
+          console.error('[Atlas] Error processing feature:', e);
+          return null;
+        }
+
+        this._featureCache.set(cacheKey, processed);
+        return processed;
+      }
+
+      _renderPoint(ctx, feature, style) {
+        const { x, y } = feature.coordinates;
+        const radius = style.radius || 5;
+
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, TWO_PI);
+
+        if (style.fill !== false) {
+          ctx.fillStyle = style.fillColor || style.color || '#3388ff';
+          ctx.globalAlpha = style.fillOpacity !== undefined ? style.fillOpacity : 0.8;
+          ctx.fill();
+        }
+
+        if (style.stroke !== false) {
+          ctx.strokeStyle = style.color || '#3388ff';
+          ctx.lineWidth = style.weight || 2;
+          ctx.globalAlpha = style.opacity || 1;
+          ctx.stroke();
+        }
+
+        ctx.globalAlpha = 1;
+      }
+
+      _renderMultiPoint(ctx, coords, style) {
+        for (const pt of coords) {
+          this._renderPoint(ctx, { coordinates: pt }, style);
+        }
+      }
+
+      _renderLineString(ctx, feature, style) {
+        const coords = feature.coordinates;
+        if (coords.length < 2) return;
+
+        ctx.beginPath();
+        ctx.moveTo(coords[0].x, coords[0].y);
+
+        for (let i = 1; i < coords.length; i++) {
+          ctx.lineTo(coords[i].x, coords[i].y);
+        }
+
+        ctx.strokeStyle = style.color || '#3388ff';
+        ctx.lineWidth = style.weight || 3;
+        ctx.lineCap = style.lineCap || 'round';
+        ctx.lineJoin = style.lineJoin || 'round';
+        ctx.globalAlpha = style.opacity || 1;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+
+      _renderMultiLineString(ctx, coords, style) {
+        for (const line of coords) {
+          this._renderLineString(ctx, { coordinates: line }, style);
+        }
+      }
+
+      _renderPolygon(ctx, feature, style) {
+        const rings = feature.coordinates;
+        if (rings.length === 0) return;
+
+        ctx.beginPath();
+
+        for (let ringIdx = 0; ringIdx < rings.length; ringIdx++) {
+          const ring = rings[ringIdx];
+          if (ring.length < 3) continue;
+
+          if (ringIdx === 0) {
+            // Outer ring
+            ctx.moveTo(ring[0].x, ring[0].y);
+            for (let i = 1; i < ring.length; i++) {
+              ctx.lineTo(ring[i].x, ring[i].y);
+            }
+            ctx.closePath();
+          } else {
+            // Holes
+            ctx.moveTo(ring[0].x, ring[0].y);
+            for (let i = 1; i < ring.length; i++) {
+              ctx.lineTo(ring[i].x, ring[i].y);
+            }
+            ctx.closePath();
+          }
+        }
+
+        if (style.fill !== false) {
+          ctx.fillStyle = style.fillColor || style.color || '#3388ff';
+          ctx.globalAlpha = style.fillOpacity !== undefined ? style.fillOpacity : 0.2;
+          ctx.fill();
+          ctx.globalAlpha = 1;
+        }
+
+        if (style.stroke !== false) {
+          ctx.strokeStyle = style.color || '#3388ff';
+          ctx.lineWidth = style.weight || 3;
+          ctx.lineCap = style.lineCap || 'round';
+          ctx.lineJoin = style.lineJoin || 'round';
+          ctx.globalAlpha = style.opacity || 1;
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
+      }
+
+      _renderMultiPolygon(ctx, coords, style) {
+        for (const polygon of coords) {
+          this._renderPolygon(ctx, { coordinates: polygon }, style);
+        }
+      }
+
+      _hitDetect(x, y) {
+        const features = Array.from(this._featureCache.values()).reverse();
+
+        for (const processed of features) {
+          const style = this._getFeatureStyle(processed.originalFeature);
+          const tolerance = (style.weight || 3) / 2 + 3;
+
+          switch (processed.type) {
+            case 'Point': {
+              const dist = distance(x, y, processed.coordinates.x, processed.coordinates.y);
+              if (dist <= (style.radius || 5) + tolerance) {
+                return processed.originalFeature;
+              }
+              break;
+            }
+
+            case 'MultiPoint': {
+              for (const pt of processed.coordinates) {
+                const dist = distance(x, y, pt.x, pt.y);
+                if (dist <= (style.radius || 5) + tolerance) {
+                  return processed.originalFeature;
+                }
+              }
+              break;
+            }
+
+            case 'Polygon': {
+              if (processed.coordinates.length > 0) {
+                if (pointInPolygon(x, y, processed.coordinates[0])) {
+                  return processed.originalFeature;
+                }
+              }
+              break;
+            }
+
+            case 'MultiPolygon': {
+              for (const polygon of processed.coordinates) {
+                if (polygon.length > 0 && pointInPolygon(x, y, polygon[0])) {
+                  return processed.originalFeature;
+                }
+              }
+              break;
+            }
+
+            case 'LineString': {
+              for (let i = 0; i < processed.coordinates.length - 1; i++) {
+                const p1 = processed.coordinates[i];
+                const p2 = processed.coordinates[i + 1];
+                const dist = this._distanceToLineSegment(x, y, p1.x, p1.y, p2.x, p2.y);
+                if (dist <= tolerance) {
+                  return processed.originalFeature;
+                }
+              }
+              break;
+            }
+
+            case 'MultiLineString': {
+              for (const line of processed.coordinates) {
+                for (let i = 0; i < line.length - 1; i++) {
+                  const p1 = line[i];
+                  const p2 = line[i + 1];
+                  const dist = this._distanceToLineSegment(x, y, p1.x, p1.y, p2.x, p2.y);
+                  if (dist <= tolerance) {
+                    return processed.originalFeature;
+                  }
+                }
+              }
+              break;
+            }
+          }
+        }
+
+        return null;
+      }
+
+      _distanceToLineSegment(px, py, x1, y1, x2, y2) {
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const len2 = dx * dx + dy * dy;
+
+        if (len2 === 0) {
+          return distance(px, py, x1, y1);
+        }
+
+        let t = ((px - x1) * dx + (py - y1) * dy) / len2;
+        t = Math.max(0, Math.min(1, t));
+
+        const closestX = x1 + t * dx;
+        const closestY = y1 + t * dy;
+
+        return distance(px, py, closestX, closestY);
+      }
+
+      _onMouseMove(e) {
+        if (!this._map) return;
+
+        const rect = this._map.canvas.getBoundingClientRect();
+        const x = (e.clientX - rect.left) * this._map.dpr;
+        const y = (e.clientY - rect.top) * this._map.dpr;
+
+        const feature = this._hitDetect(x, y);
+
+        if (feature) {
+          this._map.canvas.style.cursor = 'pointer';
+          this.fire('mousemove', { originalEvent: e, feature });
+        } else {
+          this._map.canvas.style.cursor = this._map.isDragging ? 'grabbing' : 'grab';
+          this.fire('mouseout', { originalEvent: e });
+        }
+      }
+
+      _onMouseOut(e) {
+        this._map.canvas.style.cursor = this._map.isDragging ? 'grabbing' : 'grab';
+        this.fire('mouseout', { originalEvent: e });
+      }
+
+      _onClick(e) {
+        if (!this._map) return;
+
+        const rect = this._map.canvas.getBoundingClientRect();
+        const x = (e.clientX - rect.left) * this._map.dpr;
+        const y = (e.clientY - rect.top) * this._map.dpr;
+
+        const feature = this._hitDetect(x, y);
+        if (feature) {
+          this.fire('click', { originalEvent: e, feature });
+        }
+      }
+
+      onAdd() {
+        this._features = this._geojson.features || [];
+
+        if (this.options.interactive) {
+          this._map.canvas.addEventListener('mousemove', this._onMouseMove);
+          this._map.canvas.addEventListener('mouseout', this._onMouseOut);
+          this._map.canvas.addEventListener('click', this._onClick);
+        }
+
+        this.fire('add');
+      }
+
+      onRemove() {
+        if (this.options.interactive) {
+          this._map.canvas.removeEventListener('mousemove', this._onMouseMove);
+          this._map.canvas.removeEventListener('mouseout', this._onMouseOut);
+          this._map.canvas.removeEventListener('click', this._onClick);
+        }
+
+        this._featureCache.clear();
+        this.fire('remove');
+      }
+
+      render() {
+        if (!this._map) return;
+
+        const ctx = this._map.ctx;
+
+        const needsRebuild = (
+          this._lastRenderState.zoom !== this._map.zoom ||
+          this._lastRenderState.bearing !== this._map.bearing ||
+          this._lastRenderState.center?.lon !== this._map.center.lon ||
+          this._lastRenderState.center?.lat !== this._map.center.lat
+        );
+
+        if (needsRebuild) {
+          this._featureCache.clear();
+          this._lastRenderState = {
+            zoom: this._map.zoom,
+            bearing: this._map.bearing,
+            center: { ...this._map.center }
+          };
+        }
+
+        for (const feature of this._features) {
+          if (this.options.filter && !this.options.filter(feature)) {
+            continue;
+          }
+
+          const processed = this._processFeature(feature);
+          if (!processed) continue;
+
+          const style = this._getFeatureStyle(feature);
+
+          // Render based on geometry type
+          switch (processed.type) {
+            case 'Point':
+              this._renderPoint(ctx, processed, style);
+              break;
+
+            case 'MultiPoint':
+              this._renderMultiPoint(ctx, processed.coordinates, style);
+              break;
+
+            case 'LineString':
+              this._renderLineString(ctx, processed, style);
+              break;
+
+            case 'MultiLineString':
+              this._renderMultiLineString(ctx, processed.coordinates, style);
+              break;
+
+            case 'Polygon':
+              this._renderPolygon(ctx, processed, style);
+              break;
+
+            case 'MultiPolygon':
+              this._renderMultiPolygon(ctx, processed.coordinates, style);
+              break;
+          }
+
+          if (this.options.onEachFeature) {
+            this.options.onEachFeature(feature, processed);
+          }
+        }
+      }
+
+      setData(geojson) {
+        this._geojson = this._normalizeGeoJSON(geojson);
+        this._features = this._geojson.features || [];
+        this._featureCache.clear();
+        if (this._map) this._map.render();
+        return this;
+      }
+
+      getData() {
+        return this._geojson;
+      }
+
+      getFeatures() {
+        return this._features;
+      }
+    }
+
+    // ============================================================================
+    // CONTROL SYSTEM
+    // ============================================================================
+
+    class Control {
+      constructor(options = {}) {
+        this.options = { position: options.position || 'top-left', ...options };
+        this._map = null;
+        this._container = null;
+        this._events = {};
+      }
+
+      on(type, fn) {
+        if (!this._events[type]) this._events[type] = [];
+        this._events[type].push(fn);
+        return this;
+      }
+
+      off(type, fn) {
+        if (!this._events[type]) return this;
+        this._events[type] = this._events[type].filter(cb => cb !== fn);
+        return this;
+      }
+
+      fire(type, data = {}) {
+        if (!this._events[type]) return;
+        data.type = type;
+        data.target = this;
+        this._events[type].forEach(fn => {
+          try {
+            fn(data);
+          } catch (e) {
+            console.error(`[Atlas] Error in control event listener for '${type}':`, e);
+          }
+        });
+      }
+
+      onAdd(map) {
+        return document.createElement('div');
+      }
+
+      onRemove() { }
+
+      addTo(map) {
+        this.remove();
+        this._map = map;
+        this._container = this.onAdd(map);
+
+        if (this._container) {
+          this._container.controlInstance = this;
+          this._addToControlCorner();
+        }
+
+        return this;
+      }
+
+      remove() {
+        if (!this._map) return this;
+
+        this.onRemove();
+
+        if (this._container && this._container.parentNode) {
+          this._container.parentNode.removeChild(this._container);
+        }
+
+        if (this._map) {
+          this._map.removeControl(this);
+        }
+
+        this._map = null;
+        this._container = null;
+
+        return this;
+      }
+
+      getContainer() {
+        return this._container;
+      }
+
+      _addToControlCorner() {
+        if (!this._map || !this._container) return;
+
+        const position = this.options.position;
+        let cornerContainer = this._map._controlCorners[position];
+
+        if (!cornerContainer) {
+          cornerContainer = document.createElement('div');
+          cornerContainer.className = `atlas-control-container atlas-control-${position}`;
+
+          const isVertical = position.includes('top') || position.includes('bottom');
+          if (isVertical) {
+            cornerContainer.classList.add('atlas-control-vertical');
+          } else {
+            cornerContainer.classList.add('atlas-control-horizontal');
+          }
+
+          this._map.container.appendChild(cornerContainer);
+          this._map._controlCorners[position] = cornerContainer;
+        }
+
+        cornerContainer.appendChild(this._container);
+      }
+
+      getPosition() {
+        return this.options.position;
+      }
+
+      setPosition(position) {
+        this.options.position = position;
+        if (this._map && this._container) {
+          if (this._container.parentNode) {
+            this._container.parentNode.removeChild(this._container);
+          }
+          this._addToControlCorner();
+        }
+        return this;
+      }
+    }
+
+    // ============================================================================
+    // ZOOM CONTROL
+    // ============================================================================
+
+    class ZoomControl extends Control {
+      constructor(options = {}) {
+        super(options);
+        this.options = {
+          ...this.options,
+          zoomInTitle: options.zoomInTitle || 'Zoom in',
+          zoomOutTitle: options.zoomOutTitle || 'Zoom out'
+        };
+      }
+
+      onAdd(map) {
+        const container = document.createElement('div');
+        container.className = 'atlas-zoom-control atlas-control-vertical';
+
+        const zoomInBtn = document.createElement('button');
+        zoomInBtn.className = 'control-btn';
+        zoomInBtn.title = this.options.zoomInTitle;
+        zoomInBtn.setAttribute('aria-label', this.options.zoomInTitle);
+        zoomInBtn.textContent = '+';
+        zoomInBtn.onclick = () => {
+          if (map) {
+            map.stopAnimations();
+            map.setZoom(map.getZoom() + 1);
+          }
+        };
+
+        const zoomOutBtn = document.createElement('button');
+        zoomOutBtn.className = 'control-btn';
+        zoomOutBtn.title = this.options.zoomOutTitle;
+        zoomOutBtn.setAttribute('aria-label', this.options.zoomOutTitle);
+        zoomOutBtn.textContent = '−';
+        zoomOutBtn.onclick = () => {
+          if (map) {
+            map.stopAnimations();
+            map.setZoom(map.getZoom() - 1);
+          }
+        };
+
+        container.appendChild(zoomInBtn);
+        container.appendChild(zoomOutBtn);
+
+        this._zoomInBtn = zoomInBtn;
+        this._zoomOutBtn = zoomOutBtn;
+
+        map.on('zoom', () => this._updateZoomButtons(map));
+        map.on('baselayerchange', () => this._updateZoomButtons(map));
+
+        this._updateZoomButtons(map);
+
+        return container;
+      }
+
+      onRemove() {
+        if (this._map) {
+          this._map.off('zoom', () => this._updateZoomButtons(this._map));
+          this._map.off('baselayerchange', () => this._updateZoomButtons(this._map));
+        }
+      }
+
+      _updateZoomButtons(map) {
+        if (!map || !this._zoomInBtn || !this._zoomOutBtn) return;
+
+        const minZoom = map.getBaseLayer() ? map.getBaseLayer().getMinZoom() : 0;
+        const maxZoom = map.getBaseLayer() ? map.getBaseLayer().getMaxZoom() : 18;
+        const currentZoom = map.getZoom();
+
+        this._zoomInBtn.disabled = currentZoom >= maxZoom;
+        this._zoomOutBtn.disabled = currentZoom <= minZoom;
+      }
+    }
+
+    // ============================================================================
+    // LAYER CONTROL
+    // ============================================================================
+
+    class LayerControl extends Control {
+      constructor(options = {}) {
+        super(options);
+        this.options = {
+          ...this.options,
+          title: options.title || 'Toggle layer'
+        };
+      }
+
+      onAdd(map) {
+        const container = document.createElement('div');
+        container.className = 'atlas-layer-control';
+
+        const toggleBtn = document.createElement('button');
+        toggleBtn.className = 'control-btn';
+        toggleBtn.title = this.options.title;
+        toggleBtn.setAttribute('aria-label', this.options.title);
+        toggleBtn.innerHTML = '🌐';
+
+        toggleBtn.onclick = () => {
+          if (map) {
+            const current = map.getBaseLayer();
+            let newLayerKey = 'OSM';
+
+            if (current && current.urlTemplate) {
+              if (current.urlTemplate.includes('openstreetmap')) {
+                newLayerKey = 'ESRI';
+              } else if (current.urlTemplate.includes('World_Imagery')) {
+                newLayerKey = 'ESRI_TOPO';
+              } else {
+                newLayerKey = 'OSM';
+              }
+            }
+
+            const newLayer = createTileLayerFromConfig(newLayerKey);
+            map.setBaseLayer(newLayer);
+          }
+        };
+
+        container.appendChild(toggleBtn);
+        this._toggleBtn = toggleBtn;
+
+        return container;
+      }
+
+      onRemove() { }
+    }
+
+    // ============================================================================
+    // FULLSCREEN CONTROL
+    // ============================================================================
+
+    class FullscreenControl extends Control {
+      constructor(options = {}) {
+        super(options);
+        this.options = {
+          ...this.options,
+          title: options.title || 'Toggle fullscreen',
+          titleExit: options.titleExit || 'Exit fullscreen'
+        };
+        this._updateButtonHandler = this._updateButton.bind(this);
+      }
+
+      onAdd(map) {
+        const container = document.createElement('div');
+        container.className = 'atlas-fullscreen-control';
+
+        const fullscreenBtn = document.createElement('button');
+        fullscreenBtn.className = 'control-btn';
+        fullscreenBtn.title = this.options.title;
+        fullscreenBtn.setAttribute('aria-label', this.options.title);
+        fullscreenBtn.innerHTML = '&#x26F6;';
+
+        const toggleFullscreen = () => {
+          if (!document.fullscreenElement) {
+            map.container.requestFullscreen().catch(err => {
+              console.warn(`[Atlas] Error enabling fullscreen: ${err.message}`);
+            });
+          } else {
+            document.exitFullscreen().catch(err => {
+              console.warn(`[Atlas] Error exiting fullscreen: ${err.message}`);
+            });
+          }
+        };
+
+        fullscreenBtn.onclick = toggleFullscreen;
+        document.addEventListener('fullscreenchange', this._updateButtonHandler);
+
+        container.appendChild(fullscreenBtn);
+
+        this._fullscreenBtn = fullscreenBtn;
+        this._updateButton();
+
+        return container;
+      }
+
+      onRemove() {
+        document.removeEventListener('fullscreenchange', this._updateButtonHandler);
+      }
+
+      _updateButton() {
+        if (!this._fullscreenBtn || !this._map) return;
+
+        if (document.fullscreenElement === this._map.container) {
+          this._fullscreenBtn.innerHTML = '&#x2716;';
+          this._fullscreenBtn.title = this.options.titleExit;
+        } else {
+          this._fullscreenBtn.innerHTML = '&#x26F6;';
+          this._fullscreenBtn.title = this.options.title;
+        }
+      }
+    }
+
+    // ============================================================================
+    // ATTRIBUTION CONTROL
+    // ============================================================================
+
+    class AttributionControl extends Control {
+      constructor(options = {}) {
+        super({ position: 'bottom-left', ...options });
+        this.options = {
+          ...this.options,
+          prefix: options.prefix || ''
+        };
+      }
+
+      onAdd(map) {
+        const container = document.createElement('div');
+        container.id = 'attribution';
+        this._container = container;
+
+        map.on('moveend', () => this._update(map));
+        map.on('baselayerchange', () => this._update(map));
+
+        this._update(map);
+
+        return container;
+      }
+
+      onRemove() {
+        if (this._map) {
+          this._map.off('moveend', () => this._update(this._map));
+          this._map.off('baselayerchange', () => this._update(this._map));
+        }
+      }
+
+      _update(map) {
+        if (!map || !this._container) return;
+
+        const attributions = new Set();
+
+        // Collect attributions from all layers
+        map.getLayers().forEach(layer => {
+          if (typeof layer.getAttribution === 'function') {
+            const attr = layer.getAttribution();
+            if (attr) attributions.add(attr);
+          }
+        });
+
+        // Add Atlas.js attribution
+        attributions.add(
+          '<a href="https://github.com/yourusername/atlasjs" target="_blank" rel="noopener noreferrer">Atlas.js</a>'
+        );
+
+        this._container.innerHTML = Array.from(attributions).join(' | ');
+      }
+    }
+
+    // ============================================================================
+    // COMPASS CONTROL
+    // ============================================================================
+
+    class CompassControl extends Control {
+      constructor(options = {}) {
+        super({ position: 'top-right', ...options });
+        this.options = {
+          ...this.options,
+          title: options.title || 'Reset North'
+        };
+
+        this._onMouseEnter = this._onMouseEnter.bind(this);
+        this._onMouseLeave = this._onMouseLeave.bind(this);
+        this._onMouseDown = this._onMouseDown.bind(this);
+        this._onMouseUp = this._onMouseUp.bind(this);
+        this._updateCompass = this._updateCompass.bind(this);
+      }
+
+      onAdd(map) {
+        const container = document.createElement('div');
+        container.className = 'atlas-compass-control';
+
+        const compassBtn = document.createElement('button');
+        compassBtn.id = 'compass';
+        compassBtn.className = 'control-btn';
+        compassBtn.title = this.options.title;
+        compassBtn.setAttribute('aria-label', this.options.title);
+        compassBtn.innerHTML = 'N';
+        compassBtn.style.transition = 'transform 0.2s ease-out, opacity 0.2s, display 0.2s';
+        compassBtn.style.opacity = '0';
+        compassBtn.style.pointerEvents = 'none';
+
+        compassBtn.onclick = () => {
+          if (map) {
+            map.flyTo({ bearing: 0, duration: SNAP_DURATION });
+          }
+        };
+
+        compassBtn.addEventListener('mouseenter', this._onMouseEnter);
+        compassBtn.addEventListener('mouseleave', this._onMouseLeave);
+        compassBtn.addEventListener('mousedown', this._onMouseDown);
+        compassBtn.addEventListener('mouseup', this._onMouseUp);
+
+        container.appendChild(compassBtn);
+        this._compassBtn = compassBtn;
+
+        map.on('rotate', this._updateCompass);
+        map.on('moveend', this._updateCompass);
+
+        this._updateCompass();
+
+        return container;
+      }
+
+      onRemove() {
+        if (this._compassBtn) {
+          this._compassBtn.removeEventListener('mouseenter', this._onMouseEnter);
+          this._compassBtn.removeEventListener('mouseleave', this._onMouseLeave);
+          this._compassBtn.removeEventListener('mousedown', this._onMouseDown);
+          this._compassBtn.removeEventListener('mouseup', this._onMouseUp);
+        }
+
+        if (this._map) {
+          this._map.off('rotate', this._updateCompass);
+          this._map.off('moveend', this._updateCompass);
+        }
+      }
+
+      _onMouseEnter() {
+        if (this._compassBtn) {
+          this._compassBtn.style.background = "rgba(240, 240, 240, 0.95)";
+        }
+      }
+
+      _onMouseLeave() {
+        if (this._compassBtn) {
+          this._compassBtn.style.background = "rgba(255, 255, 255, 0.9)";
+        }
+      }
+
+      _onMouseDown() {
+        if (this._compassBtn && this._map) {
+          const bearing = this._map.getBearing();
+          this._compassBtn.style.transform = `scale(0.9) rotate(${-bearing * RAD2DEG}deg)`;
+        }
+      }
+
+      _onMouseUp() {
+        if (this._compassBtn && this._map) {
+          const bearing = this._map.getBearing();
+          this._compassBtn.style.transform = `scale(1) rotate(${-bearing * RAD2DEG}deg)`;
+        }
+      }
+
+      _updateCompass() {
+        if (!this._compassBtn || !this._map) return;
+
+        const bearing = this._map.getBearing();
+        const visible = Math.abs(bearing) > 0.01;
+
+        this._compassBtn.style.opacity = visible ? '1' : '0';
+        this._compassBtn.style.pointerEvents = visible ? 'auto' : 'none';
+        this._compassBtn.style.transform = `scale(1) rotate(${-bearing * RAD2DEG}deg)`;
+      }
+    }
+
+    // ============================================================================
+    // HANDLER SYSTEM
+    // ============================================================================
+
+    class Handler {
+      constructor(map) {
+        this._map = map;
+        this._enabled = false;
+      }
+
+      enable() {
+        if (this._enabled) return this;
+        this._enabled = true;
+        this._addEvents();
+        return this;
+      }
+
+      disable() {
+        if (!this._enabled) return this;
+        this._enabled = false;
+        this._removeEvents();
+        return this;
+      }
+
+      toggle() {
+        return this._enabled ? this.disable() : this.enable();
+      }
+
+      isEnabled() {
+        return this._enabled;
+      }
+
+      _addEvents() { }
+      _removeEvents() { }
+
+      destroy() {
+        this.disable();
+      }
+    }
+
+    // ============================================================================
+    // KEYBOARD PAN HANDLER
+    // ============================================================================
+
+    class KeyboardPanHandler extends Handler {
+      constructor(map) {
+        super(map);
+        this._onKeyDown = this._onKeyDown.bind(this);
+        this.PAN_AMOUNT = 100;
+      }
+
+      _addEvents() {
+        window.addEventListener('keydown', this._onKeyDown);
+      }
+
+      _removeEvents() {
+        window.removeEventListener('keydown', this._onKeyDown);
+      }
+
+      _onKeyDown(e) {
+        if (!this._map.isFocused()) return;
+
+        let panX = 0;
+        let panY = 0;
+        const w = this._map.canvas.width / this._map.dpr;
+        const h = this._map.canvas.height / this._map.dpr;
+
+        switch (e.key) {
+          case "ArrowUp":
+            panY = -this.PAN_AMOUNT;
+            break;
+          case "ArrowDown":
+            panY = this.PAN_AMOUNT;
+            break;
+          case "ArrowLeft":
+            panX = -this.PAN_AMOUNT;
+            break;
+          case "ArrowRight":
+            panX = this.PAN_AMOUNT;
+            break;
+          case "n":
+            this._map.flyTo({ bearing: 0, duration: SNAP_DURATION });
+            e.preventDefault();
+            return;
+          case "r":
+            this._map.setBearing(this._map.getBearing() + DEG2RAD * 15);
+            e.preventDefault();
+            return;
+          case "l":
+            this._map.setBearing(this._map.getBearing() - DEG2RAD * 15);
+            e.preventDefault();
+            return;
+          case "s":
+            this._cycleBaseLayer();
+            e.preventDefault();
+            return;
+          case "+":
+          case "=":
+            this._map.smoothZoomAt(w / 2, h / 2, 1);
+            e.preventDefault();
+            return;
+          case "-":
+            this._map.smoothZoomAt(w / 2, h / 2, -1);
+            e.preventDefault();
+            return;
+          default:
+            return;
+        }
+
+        if (panX !== 0 || panY !== 0) {
+          e.preventDefault();
+          this._map.stopAnimations();
+          const newCenter = this._map.screenToLatLon(w / 2 - panX, h / 2 - panY);
+          this._map.setCenter(newCenter);
+          this._map.render();
+        }
+      }
+
+      _cycleBaseLayer() {
+        const current = this._map.getBaseLayer();
+        let nextLayerKey = 'OSM';
+
+        if (current && current.urlTemplate) {
+          if (current.urlTemplate.includes('openstreetmap')) {
+            nextLayerKey = 'ESRI';
+          } else if (current.urlTemplate.includes('World_Imagery')) {
+            nextLayerKey = 'ESRI_TOPO';
+          }
+        }
+
+        const newLayer = createTileLayerFromConfig(nextLayerKey);
+        this._map.setBaseLayer(newLayer);
+      }
+    }
+
+    // ============================================================================
+    // DRAG PAN HANDLER
+    // ============================================================================
+
+    class DragPanHandler extends Handler {
+      constructor(map) {
+        super(map);
+        this._isDragging = false;
+        this._dragStart = null;
+        this._moveSamples = [];
+        this._onMouseDown = this._onMouseDown.bind(this);
+        this._onMouseMove = this._onMouseMove.bind(this);
+        this._onMouseUp = this._onMouseUp.bind(this);
+        this._onTouchStart = this._onTouchStart.bind(this);
+        this._onTouchMove = this._onTouchMove.bind(this);
+        this._onTouchEnd = this._onTouchEnd.bind(this);
+      }
+
+      _addEvents() {
+        this._map.canvas.addEventListener('mousedown', this._onMouseDown);
+        this._map.canvas.addEventListener('touchstart', this._onTouchStart, { passive: false });
+      }
+
+      _removeEvents() {
+        this._map.canvas.removeEventListener('mousedown', this._onMouseDown);
+        this._map.canvas.removeEventListener('touchstart', this._onTouchStart);
+        this._removeMoveEvents();
+      }
+
+      _removeMoveEvents() {
+        document.removeEventListener('mousemove', this._onMouseMove);
+        document.removeEventListener('mouseup', this._onMouseUp);
+        document.removeEventListener('touchmove', this._onTouchMove, { passive: false });
+        document.removeEventListener('touchend', this._onTouchEnd);
+        document.removeEventListener('touchcancel', this._onTouchEnd);
+      }
+
+      _onMouseDown(e) {
+        if (e.button !== 0 || e.target !== this._map.canvas) return;
+        this._startDrag(e.clientX, e.clientY);
+        document.addEventListener('mousemove', this._onMouseMove);
+        document.addEventListener('mouseup', this._onMouseUp);
+      }
+
+      _onMouseMove(e) {
+        if (!this._isDragging) return;
+        e.preventDefault();
+
+        const dx = e.clientX - this._dragStart.x;
+        const dy = e.clientY - this._dragStart.y;
+
+        if (dx === 0 && dy === 0) return;
+
+        const w = this._map.canvas.width / this._map.dpr;
+        const h = this._map.canvas.height / this._map.dpr;
+
+        this._map.center = this._map.screenToLatLon(
+          w / 2 - dx,
+          h / 2 - dy,
+          this._map.zoom,
+          this._map.bearing,
+          this._dragStart.center
+        );
+
+        this._pushVelocitySample(e.clientX, e.clientY);
+        this._map.render();
+      }
+
+      _onMouseUp() {
+        this._endDrag();
+      }
+
+      _onTouchStart(e) {
+        if (e.touches.length !== 1) return;
+        e.preventDefault();
+
+        this._startDrag(e.touches[0].clientX, e.touches[0].clientY);
+        document.addEventListener('touchmove', this._onTouchMove, { passive: false });
+        document.addEventListener('touchend', this._onTouchEnd);
+        document.addEventListener('touchcancel', this._onTouchEnd);
+      }
+
+      _onTouchMove(e) {
+        if (!this._isDragging || e.touches.length !== 1) return;
+        e.preventDefault();
+
+        const dx = e.touches[0].clientX - this._dragStart.x;
+        const dy = e.touches[0].clientY - this._dragStart.y;
+
+        if (dx === 0 && dy === 0) return;
+
+        const w = this._map.canvas.width / this._map.dpr;
+        const h = this._map.canvas.height / this._map.dpr;
+
+        this._map.center = this._map.screenToLatLon(
+          w / 2 - dx,
+          h / 2 - dy,
+          this._map.zoom,
+          this._map.bearing,
+          this._dragStart.center
+        );
+
+        this._pushVelocitySample(e.touches[0].clientX, e.touches[0].clientY);
+        this._map.render();
+      }
+
+      _onTouchEnd() {
+        this._endDrag();
+      }
+
+      _startDrag(clientX, clientY) {
+        this._isDragging = true;
+        this._map.stopAnimations();
+        this._map.isDragging = true;
+        this._map.container.classList.add('dragging');
+
+        this._dragStart = {
+          x: clientX,
+          y: clientY,
+          center: { ...this._map.center }
+        };
+
+        this._moveSamples = [];
+        this._pushVelocitySample(clientX, clientY);
+
+        this._map.fire('movestart');
+      }
+
+      _endDrag() {
+        if (!this._isDragging) return;
+
+        this._isDragging = false;
+        this._map.isDragging = false;
+        this._map.container.classList.remove('dragging');
+
+        const { vx, vy } = this._computeVelocity();
+        this._removeMoveEvents();
+
+        if (Math.hypot(vx, vy) > INERTIA_STOP_SPEED) {
+          this._startInertia(vx, vy);
+        } else {
+          this._map.fire('moveend');
+        }
+      }
+
+      _pushVelocitySample(x, y) {
+        const t = performance.now();
+        this._moveSamples.push({ t, x, y });
+
+        const cutoff = t - VELOCITY_WINDOW_MS;
+        while (this._moveSamples.length && this._moveSamples[0].t < cutoff) {
+          this._moveSamples.shift();
+        }
+      }
+
+      _computeVelocity() {
+        if (this._moveSamples.length < 2) {
+          return { vx: 0, vy: 0 };
+        }
+
+        const last = this._moveSamples[this._moveSamples.length - 1];
+        let i = this._moveSamples.length - 2;
+
+        while (i > 0 && last.t - this._moveSamples[i].t < VELOCITY_WINDOW_MS * 0.5) {
+          i--;
+        }
+
+        const ref = this._moveSamples[i];
+        const dt = Math.max(1, last.t - ref.t);
+
+        return {
+          vx: (last.x - ref.x) / dt,
+          vy: (last.y - ref.y) / dt
+        };
+      }
+
+      _startInertia(vx, vy) {
+        let lastT = performance.now();
+
+        const step = () => {
+          const now = performance.now();
+          const dt = now - lastT;
+          lastT = now;
+
+          const dx = vx * dt;
+          const dy = vy * dt;
+
+          const w = this._map.canvas.width / this._map.dpr;
+          const h = this._map.canvas.height / this._map.dpr;
+
+          this._map.center = this._map.screenToLatLon(w / 2 - dx, h / 2 - dy);
+
+          const vmag = Math.hypot(vx, vy);
+          const newVmag = Math.max(0, vmag - INERTIA_DECEL * dt);
+
+          if (newVmag <= INERTIA_STOP_SPEED) {
+            this._map.render();
+            this._map._inertiaRAF = null;
+            this._map.fire('moveend');
+            return;
+          }
+
+          const scale = newVmag / (vmag || 1);
+          vx *= scale;
+          vy *= scale;
+
+          this._map.render();
+          this._map._inertiaRAF = requestAnimationFrame(step);
+        };
+
+        this._map._inertiaRAF = requestAnimationFrame(step);
+      }
+    }
+
+    // ============================================================================
+    // SCROLL ZOOM HANDLER
+    // ============================================================================
+
+    class ScrollZoomHandler extends Handler {
+      constructor(map) {
+        super(map);
+        this._onWheel = this._onWheel.bind(this);
+      }
+
+      _addEvents() {
+        this._map.container.addEventListener('wheel', this._onWheel, { passive: false });
+      }
+
+      _removeEvents() {
+        this._map.container.removeEventListener('wheel', this._onWheel);
+      }
+
+      _onWheel(e) {
+        e.preventDefault();
+
+        const rect = this._map.canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        const deltaZ = e.deltaY < 0 ? WHEEL_ZOOM_STEP : -WHEEL_ZOOM_STEP;
+
+        this._map.smoothZoomAt(x, y, deltaZ);
+      }
+    }
+
+    // ============================================================================
+    // DOUBLE CLICK ZOOM HANDLER
+    // ============================================================================
+
+    class DoubleClickZoomHandler extends Handler {
+      constructor(map) {
+        super(map);
+        this._onDoubleClick = this._onDoubleClick.bind(this);
+      }
+
+      _addEvents() {
+        this._map.canvas.addEventListener('dblclick', this._onDoubleClick);
+      }
+
+      _removeEvents() {
+        this._map.canvas.removeEventListener('dblclick', this._onDoubleClick);
+      }
+
+      _onDoubleClick(e) {
+        e.preventDefault();
+
+        const rect = this._map.canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        this._map.animateZoomRotateAbout(
+          x,
+          y,
+          this._map.getZoom() + 1,
+          this._map.getBearing(),
+          TAP_ZOOM_DURATION
+        );
+      }
+    }
+
+    // ============================================================================
+    // TOUCH ZOOM ROTATE HANDLER
+    // ============================================================================
+
+    class TouchZoomRotateHandler extends Handler {
+      constructor(map) {
+        super(map);
+        this._isPinching = false;
+        this._pinchStartDist = 0;
+        this._pinchStartAngle = 0;
+        this._pinchStartZoom = map.getZoom();
+        this._pinchStartBearing = map.getBearing();
+        this._pinchStartTime = 0;
+        this._pinchLastCenter = null;
+        this._pinchAnchorLL = null;
+        this._pinchMoved = false;
+
+        this._onTouchStart = this._onTouchStart.bind(this);
+        this._onTouchMove = this._onTouchMove.bind(this);
+        this._onTouchEnd = this._onTouchEnd.bind(this);
+      }
+
+      _addEvents() {
+        this._map.canvas.addEventListener('touchstart', this._onTouchStart, { passive: false });
+      }
+
+      _removeEvents() {
+        this._map.canvas.removeEventListener('touchstart', this._onTouchStart);
+        this._removeMoveEvents();
+      }
+
+      _removeMoveEvents() {
+        document.removeEventListener('touchmove', this._onTouchMove, { passive: false });
+        document.removeEventListener('touchend', this._onTouchEnd);
+        document.removeEventListener('touchcancel', this._onTouchEnd);
+      }
+
+      _onTouchStart(e) {
+        if (e.touches.length < 2) return;
+        e.preventDefault();
+
+        this._startPinch(e);
+
+        document.addEventListener('touchmove', this._onTouchMove, { passive: false });
+        document.addEventListener('touchend', this._onTouchEnd);
+        document.addEventListener('touchcancel', this._onTouchEnd);
+      }
+
+      _startPinch(e) {
+        this._map.stopAnimations();
+        this._map.fire('movestart');
+
+        this._isPinching = true;
+
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+
+        this._pinchStartDist = distance(t1.clientX, t1.clientY, t2.clientX, t2.clientY);
+        this._pinchStartAngle = Math.atan2(t2.clientY - t1.clientY, t2.clientX - t1.clientX);
+        this._pinchStartZoom = this._map.getZoom();
+        this._pinchStartBearing = this._map.getBearing();
+        this._pinchStartTime = performance.now();
+
+        const rect = this._map.canvas.getBoundingClientRect();
+        const x = (t1.clientX + t2.clientX) / 2 - rect.left;
+        const y = (t1.clientY + t2.clientY) / 2 - rect.top;
+
+        this._pinchLastCenter = { x, y };
+        this._pinchAnchorLL = this._map.screenToLatLon(
+          x,
+          y,
+          this._map.getZoom(),
+          this._map.getBearing(),
+          this._map.getCenter()
+        );
+
+        this._pinchMoved = false;
+      }
+
+      _onTouchMove(e) {
+        if (!this._isPinching || e.touches.length < 2) return;
+        e.preventDefault();
+
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+
+        const dist = distance(t1.clientX, t1.clientY, t2.clientX, t2.clientY);
+        const angle = Math.atan2(t2.clientY - t1.clientY, t2.clientX - t1.clientX);
+
+        const rect = this._map.canvas.getBoundingClientRect();
+        const x = (t1.clientX + t2.clientX) / 2 - rect.left;
+        const y = (t1.clientY + t2.clientY) / 2 - rect.top;
+
+        const targetZoom = this._pinchStartZoom + Math.log2(dist / Math.max(1, this._pinchStartDist));
+        const deltaAngle = normalizeAngle(angle - this._pinchStartAngle);
+        const targetBearing = normalizeAngle(this._pinchStartBearing + deltaAngle);
+
+        if (!this._pinchMoved) {
+          const zoomChange = Math.abs(Math.log(dist / Math.max(1, this._pinchStartDist)));
+          const rotationChange = Math.abs(deltaAngle);
+
+          if (zoomChange > Math.log(1.05) || rotationChange > ROTATE_MOVE_THRESH_RAD) {
+            this._pinchMoved = true;
+          }
+        }
+
+        this._map.applyZoomRotateAbout(x, y, targetZoom, targetBearing, this._pinchAnchorLL);
+        this._pinchLastCenter = { x, y };
+
+        this._map.render();
+      }
+
+      _onTouchEnd(e) {
+        if (!this._isPinching) return;
+
+        const dt = performance.now() - this._pinchStartTime;
+
+        if (dt <= TWO_FINGER_TAP_MAX_DELAY && !this._pinchMoved) {
+          const x = this._pinchLastCenter ? this._pinchLastCenter.x : (this._map.canvas.width / this._map.dpr) / 2;
+          const y = this._pinchLastCenter ? this._pinchLastCenter.y : (this._map.canvas.height / this._map.dpr) / 2;
+
+          this._map.animateZoomRotateAbout(
+            x,
+            y,
+            this._map.getZoom() - 1,
+            this._map.getBearing(),
+            TAP_ZOOM_DURATION
+          );
+        } else {
+          this._map.fire('moveend');
+        }
+
+        this._isPinching = false;
+        this._removeMoveEvents();
+      }
+    }
+
+    // ============================================================================
+    // MAIN ATLAS MAP CLASS
+    // ============================================================================
+
+    class Atlas {
+      constructor(id, options = {}) {
+        Object.assign(CONFIG, options);
+
+        // Get DOM elements
+        this.canvas = document.getElementById(id);
+        if (!this.canvas) {
+          throw new Error(`[Atlas] Canvas element with id "${id}" not found`);
+        }
+
+        this.ctx = this.canvas.getContext("2d", { willReadFrequently: true });
+        if (!this.ctx) {
+          throw new Error('[Atlas] Unable to get 2D context from canvas');
+        }
+
+        this.container = this.canvas.parentElement;
+        if (!this.container) {
+          throw new Error('[Atlas] Canvas has no parent element');
+        }
+
+        this.container.tabIndex = 0;
+
+        // Map state
+        this.center = {
+          lon: wrapLongitude(CONFIG.defaultCenter.lon),
+          lat: clampLatitude(CONFIG.defaultCenter.lat)
+        };
+        this.zoom = CONFIG.defaultZoom;
+        this.bearing = 0;
+        this.isDragging = false;
+
+        // Device pixel ratio
+        this.dpr = window.devicePixelRatio || 1;
+
+        // DOM elements
+        this.loadingEl = document.getElementById("loading");
+        this.loadingCountEl = document.getElementById("loading-count");
+
+        // Animation state
+        this._inertiaRAF = null;
+        this._zoomAnim = null;
+        this._flyAnim = null;
+
+        // Layer management
+        this._layers = [];
+        this._baseLayer = null;
+
+        // Control management
+        this._controls = [];
+        this._controlCorners = {};
+
+        // Handler management
+        this._handlers = {};
+
+        // Event system
+        this._events = {};
+
+        // Projection
+        this.projection = DEFAULT_PROJECTION;
+
+        // Bind methods
+        this._onResize = this.resize.bind(this);
+        this._draw = this._draw.bind(this);
+
+        // Initialize
+        this.resize();
+        window.addEventListener('resize', this._onResize);
+
+        // Add default handlers
+        this._initializeHandlers();
+
+        // Add default controls
+        this._initializeControls();
+
+        // Log usage info
+        this._logUsageInfo();
+
+        // Initial render
+        this.render();
+        this.fire('load');
+      }
+
+      _initializeHandlers() {
+        this.addHandler('dragPan', DragPanHandler);
+        this.addHandler('scrollZoom', ScrollZoomHandler);
+        this.addHandler('doubleClickZoom', DoubleClickZoomHandler);
+        this.addHandler('touchZoomRotate', TouchZoomRotateHandler);
+        this.addHandler('keyboardPan', KeyboardPanHandler);
+      }
+
+      _initializeControls() {
+        this.addControl(new ZoomControl({ position: 'top-left' }));
+        this.addControl(new LayerControl({ position: 'top-left' }));
+        this.addControl(new FullscreenControl({ position: 'top-right' }));
+        this.addControl(new AttributionControl());
+        this.addControl(new CompassControl());
+      }
+
+      _logUsageInfo() {
+        console.info(
+          '%c[Atlas.js]%c Lightweight mapping library loaded',
+          'font-weight: bold; color: #0078A8;',
+          'color: #333;'
+        );
+        console.info(
+          '%cPlease comply with tile provider terms:%c\n' +
+          '- OpenStreetMap: https://operations.osmfoundation.org/policies/tiles/\n' +
+          '- Esri: https://www.esri.com/legal/terms/master-agreement',
+          'color: #e74c3c; font-weight: bold;',
+          'color: #333;'
+        );
+      }
+
+      // ========== EVENT SYSTEM ==========
+
+      on(type, fn) {
+        if (!this._events[type]) this._events[type] = [];
+        this._events[type].push(fn);
+        return this;
+      }
+
+      off(type, fn) {
+        if (!this._events[type]) return this;
+        this._events[type] = this._events[type].filter(cb => cb !== fn);
+        return this;
+      }
+
+      fire(type, data = {}) {
+        if (!this._events[type]) return;
+        data.type = type;
+        data.target = this;
+        this._events[type].forEach(fn => {
+          try {
+            fn(data);
+          } catch (e) {
+            console.error(`[Atlas] Error in event listener for '${type}':`, e);
+          }
+        });
+      }
+
+      // ========== LAYER MANAGEMENT ==========
+
+      addLayer(layer) {
+        if (!(layer instanceof Layer)) {
+          throw new Error('Argument must be an instance of Layer');
+        }
+
+        if (!this._layers.includes(layer)) {
+          this._layers.push(layer);
+          layer._map = this;
+          layer.onAdd();
+
+          if (!this._baseLayer && layer instanceof TileLayer) {
+            this.setBaseLayer(layer);
+          } else {
+            this.render();
+          }
+        }
+
+        return this;
+      }
+
+      removeLayer(layer) {
+        const index = this._layers.indexOf(layer);
+        if (index !== -1) {
+          this._layers.splice(index, 1);
+          layer.onRemove();
+          layer._map = null;
+
+          if (this._baseLayer === layer) {
+            this._baseLayer = this._layers.find(l => l instanceof TileLayer) || null;
+            this.container.style.background = this._baseLayer
+              ? this._baseLayer.getBackground()
+              : '#000';
+          }
+
+          this.render();
+        }
+
+        return this;
+      }
+
+      setBaseLayer(newLayer) {
+        if (!(newLayer instanceof TileLayer)) {
+          throw new Error('Argument must be an instance of TileLayer');
+        }
+
+        if (this._baseLayer === newLayer) return this;
+
+        if (this._baseLayer) {
+          this.removeLayer(this._baseLayer);
+        }
+
+        this._baseLayer = newLayer;
+
+        if (!this._layers.includes(newLayer)) {
+          this.addLayer(newLayer);
+        }
+
+        this.container.style.background = newLayer.getBackground();
+        this.zoom = Math.max(
+          newLayer.getMinZoom(),
+          Math.min(newLayer.getMaxZoom(), this.zoom)
+        );
+
+        this.fire('baselayerchange', { layer: newLayer });
+        this.render();
+
+        return this;
+      }
+
+      getBaseLayer() {
+        return this._baseLayer;
+      }
+
+      getLayers() {
+        return [...this._layers];
+      }
+
+      // ========== CONTROL MANAGEMENT ==========
+
+      addControl(control) {
+        if (!(control instanceof Control)) {
+          throw new Error('Argument must be an instance of Control');
+        }
+
+        this._controls.push(control);
+        control.addTo(this);
+
+        return this;
+      }
+
+      removeControl(control) {
+        const index = this._controls.indexOf(control);
+        if (index !== -1) {
+          this._controls.splice(index, 1);
+        }
+        return this;
+      }
+
+      getControls() {
+        return [...this._controls];
+      }
+
+      // ========== HANDLER MANAGEMENT ==========
+
+      addHandler(name, HandlerClass) {
+        if (this._handlers[name]) {
+          console.warn(`[Atlas] Handler '${name}' already exists`);
+          return this;
+        }
+
+        this._handlers[name] = new HandlerClass(this);
+        this._handlers[name].enable();
+
+        return this;
+      }
+
+      removeHandler(name) {
+        if (!this._handlers[name]) return this;
+
+        this._handlers[name].destroy();
+        delete this._handlers[name];
+
+        return this;
+      }
+
+      getHandler(name) {
+        return this._handlers[name] || null;
+      }
+
+      // ========== MAP STATE METHODS ==========
+
+      setCenter(center) {
+        this.center.lon = wrapLongitude(center.lon);
+        this.center.lat = clampLatitude(center.lat);
+        return this;
+      }
+
+      getCenter() {
+        return { ...this.center };
+      }
+
+      setZoom(z) {
+        const minZoom = this._baseLayer ? this._baseLayer.getMinZoom() : 0;
+        const maxZoom = this._baseLayer ? this._baseLayer.getMaxZoom() : 18;
+        const newZoom = Math.max(minZoom, Math.min(maxZoom, z));
+
+        if (Math.abs(newZoom - this.zoom) < 1e-6) return this;
+
+        this.fire('zoomstart');
+        this.zoom = newZoom;
+        this.render();
+        this.fire('zoom');
+        this.fire('move');
+        this.fire('moveend');
+
+        return this;
+      }
+
+      getZoom() {
+        return this.zoom;
+      }
+
+      setBearing(rad) {
+        const newRad = normalizeAngle(rad);
+
+        if (Math.abs(newRad - this.bearing) < 1e-6) return this;
+
+        this.fire('rotatestart');
+        this.bearing = newRad;
+        this.render();
+        this.fire('rotate');
+        this.fire('move');
+        this.fire('moveend');
+
+        return this;
+      }
+
+      getBearing() {
+        return this.bearing;
+      }
+
+      isFocused() {
+        return document.activeElement === this.container;
+      }
+
+      // ========== ANIMATION METHODS ==========
+
+      stopInertia() {
+        if (this._inertiaRAF) {
+          cancelAnimationFrame(this._inertiaRAF);
+        }
+        this._inertiaRAF = null;
+        return this;
+      }
+
+      stopAnimations() {
+        this.stopInertia();
+
+        if (this._zoomAnim?.raf) {
+          cancelAnimationFrame(this._zoomAnim.raf);
+        }
+        this._zoomAnim = null;
+
+        if (this._flyAnim?.raf) {
+          cancelAnimationFrame(this._flyAnim.raf);
+        }
+        this._flyAnim = null;
+
+        return this;
+      }
+
+      // ========== RENDERING METHODS ==========
+
+      resize() {
+        const w = this.container.offsetWidth;
+        const h = this.container.offsetHeight;
+
+        this.dpr = window.devicePixelRatio || 1;
+
+        this.canvas.width = w * this.dpr;
+        this.canvas.height = h * this.dpr;
+        this.canvas.style.width = w + "px";
+        this.canvas.style.height = h + "px";
+
+        this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+
+        this.render();
+        this.fire('resize');
+
+        return this;
+      }
+
+      scheduleRender() {
+        if (this._isRenderScheduled) return;
+        this._isRenderScheduled = true;
+
+        requestAnimationFrame(() => {
+          this._isRenderScheduled = false;
+          this._draw();
+        });
+      }
+
+      render() {
+        this.scheduleRender();
+        return this;
+      }
+
+      _draw() {
+        const backgroundColor = this._baseLayer ? this._baseLayer.getBackground() : '#000';
+        const w = this.canvas.width / this.dpr;
+        const h = this.canvas.height / this.dpr;
+
+        // Clear canvas
+        this.ctx.save();
+        this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+        this.ctx.fillStyle = backgroundColor;
+        this.ctx.fillRect(0, 0, w, h);
+
+        // Render all layers
+        for (const layer of this._layers) {
+          if (typeof layer.render === 'function') {
+            try {
+              layer.render();
+            } catch (e) {
+              console.error('[Atlas] Error rendering layer:', e);
+            }
+          }
+        }
+
+        this.ctx.restore();
+
+        // Update loading indicator
+        this._updateLoadingIndicator();
+      }
+
+      _updateLoadingIndicator() {
+        let loadingCount = 0;
+
+        for (const layer of this._layers) {
+          if (layer instanceof TileLayer) {
+            loadingCount += layer.loadingTiles.size;
+          }
+        }
+
+        const visible = loadingCount > 0;
+        this.loadingEl.classList.toggle('visible', visible);
+        this.loadingCountEl.textContent = loadingCount;
+      }
+
+      // ========== COORDINATE CONVERSION METHODS ==========
+
+      screenToLatLon(ax, ay, zoom = this.zoom, bearing = this.bearing, center = this.center) {
+        const w = this.canvas.width / this.dpr;
+        const h = this.canvas.height / this.dpr;
+        const zInt = Math.floor(zoom);
+        const ts = TILE_SIZE * Math.pow(2, zoom - zInt);
+
+        const ct = this.projection.latLngToTile(center, zInt);
+        const anchorVec = { x: ax - w / 2, y: ay - h / 2 };
+        const v = rotate(anchorVec.x / ts, anchorVec.y / ts, -bearing);
+
+        const tpt = { x: ct.x + v.x, y: ct.y + v.y };
+        const ll = this.projection.tileToLatLng(tpt.x, tpt.y, zInt);
+
+        return {
+          lon: wrapLongitude(ll.lon),
+          lat: clampLatitude(ll.lat)
+        };
+      }
+
+      latLngToContainerPoint(latlng) {
+        const w = this.canvas.width / this.dpr;
+        const h = this.canvas.height / this.dpr;
+        const zInt = Math.floor(this.zoom);
+        const ts = TILE_SIZE * Math.pow(2, this.zoom - zInt);
+
+        const ct = this.projection.latLngToTile(this.center, zInt);
+        const pt = this.projection.latLngToTile(latlng, zInt);
+
+        const trX = (pt.x - ct.x) * ts;
+        const trY = (pt.y - ct.y) * ts;
+
+        const anchorVec = rotate(trX, trY, this.bearing);
+
+        return {
+          x: w / 2 + anchorVec.x,
+          y: h / 2 + anchorVec.y
+        };
+      }
+
+      lonLatToTile(lon, lat, z) {
+        return this.projection.latLngToTile({ lat, lon }, z);
+      }
+
+      // ========== ZOOM AND ROTATION METHODS ==========
+
+      applyZoomRotateAbout(ax, ay, newZoom, newBearing, anchorLL = null) {
+        const minZoom = this._baseLayer ? this._baseLayer.getMinZoom() : 0;
+        const maxZoom = this._baseLayer ? this._baseLayer.getMaxZoom() : 18;
+
+        newZoom = Math.max(minZoom, Math.min(maxZoom, newZoom));
+
+        const w = this.canvas.width / this.dpr;
+        const h = this.canvas.height / this.dpr;
+
+        const anchorVec = { x: ax - w / 2, y: ay - h / 2 };
+        const currAnchorLL = anchorLL || this.screenToLatLon(ax, ay, this.zoom, this.bearing, this.center);
+
+        const zInt = Math.floor(newZoom);
+        const ts = TILE_SIZE * Math.pow(2, newZoom - zInt);
+
+        const Ptile = this.projection.latLngToTile(currAnchorLL, zInt);
+        const v = rotate(anchorVec.x / ts, anchorVec.y / ts, -newBearing);
+
+        const ctNew = { x: Ptile.x - v.x, y: Ptile.y - v.y };
+        const newCenter = this.projection.tileToLatLng(ctNew.x, ctNew.y, zInt);
+
+        this.center = {
+          lon: wrapLongitude(newCenter.lon),
+          lat: clampLatitude(newCenter.lat)
+        };
+
+        this.zoom = newZoom;
+        this.bearing = normalizeAngle(newBearing);
+
+        this.fire('zoom');
+        this.fire('rotate');
+        this.fire('move');
+
+        return this;
+      }
+
+      showZoomIndicator(x, y) {
+        if (this._zoomIndicator && this._zoomIndicator.parentNode) {
+          this.container.removeChild(this._zoomIndicator);
+        }
+
+        const indicator = document.createElement("div");
+        indicator.style.position = "absolute";
+        indicator.style.left = (x - 15) + "px";
+        indicator.style.top = (y - 15) + "px";
+        indicator.style.width = "30px";
+        indicator.style.height = "30px";
+        indicator.style.borderRadius = "50%";
+        indicator.style.border = "2px solid rgba(0, 120, 168, 0.8)";
+        indicator.style.opacity = "0.8";
+        indicator.style.pointerEvents = "none";
+        indicator.style.zIndex = "100";
+        indicator.style.animation = "zoom-indicator 0.6s ease-out forwards";
+
+        this.container.appendChild(indicator);
+        this._zoomIndicator = indicator;
+
+        setTimeout(() => {
+          if (this._zoomIndicator && this._zoomIndicator.parentNode) {
+            this.container.removeChild(this._zoomIndicator);
+            this._zoomIndicator = null;
+          }
+        }, 600);
+
+        return this;
+      }
+
+      animateZoomRotateAbout(ax, ay, toZoom, toBearing = this.bearing, duration = WHEEL_ZOOM_DURATION, easing = EASING.easeInOutCubic) {
+        this.showZoomIndicator(ax, ay);
+        this.stopAnimations();
+
+        const startT = performance.now();
+        const sZoom = this.zoom;
+        const sBear = this.bearing;
+        const deltaBear = shortestAngleDiff(sBear, toBearing);
+        const anchorLL = this.screenToLatLon(ax, ay, this.zoom, this.bearing, this.center);
+
+        const step = () => {
+          const t = (performance.now() - startT) / Math.max(1, duration);
+
+          if (t >= 1) {
+            this.applyZoomRotateAbout(ax, ay, toZoom, toBearing, anchorLL);
+            this.render();
+            this._zoomAnim = null;
+            this.fire('zoomend');
+            this.fire('moveend');
+            return;
+          }
+
+          const p = easing(t);
+          const z = sZoom + (toZoom - sZoom) * p;
+          const b = sBear + deltaBear * p;
+
+          this.applyZoomRotateAbout(ax, ay, z, b, anchorLL);
+          this.render();
+
+          this._zoomAnim = { raf: requestAnimationFrame(step) };
+        };
+
+        this.fire('zoomstart');
+        this.fire('movestart');
+        this._zoomAnim = { raf: requestAnimationFrame(step) };
+
+        return this;
+      }
+
+      smoothZoomAt(ax, ay, deltaZ) {
+        const minZoom = this._baseLayer ? this._baseLayer.getMinZoom() : 0;
+        const maxZoom = this._baseLayer ? this._baseLayer.getMaxZoom() : 18;
+        const target = Math.max(minZoom, Math.min(maxZoom, this.zoom + deltaZ));
+
+        this.animateZoomRotateAbout(
+          ax,
+          ay,
+          target,
+          this.bearing,
+          WHEEL_ZOOM_DURATION,
+          EASING.easeOutCubic
+        );
+
+        return this;
+      }
+
+      flyTo(options = {}) {
+        const {
+          center = this.center,
+          zoom = this.zoom,
+          bearing = this.bearing,
+          duration = FLYTO_DURATION,
+          easing = EASING.easeInOutCubic
+        } = options;
+
+        this.stopAnimations();
+
+        const startT = performance.now();
+        const sC = { ...this.center };
+        const eC = { ...center };
+        const dLon = wrapDeltaLon(eC.lon - sC.lon);
+        const dLat = eC.lat - sC.lat;
+        const sZ = this.zoom;
+        const eZ = zoom;
+        const sB = this.bearing;
+        const dB = shortestAngleDiff(sB, bearing);
+
+        const step = () => {
+          const t = (performance.now() - startT) / Math.max(1, duration);
+
+          if (t >= 1) {
+            this.center = {
+              lon: wrapLongitude(eC.lon),
+              lat: clampLatitude(eC.lat)
+            };
+            this.zoom = eZ;
+            this.bearing = normalizeAngle(bearing);
+            this.render();
+            this._flyAnim = null;
+            this.fire('moveend');
+            return;
+          }
+
+          const p = easing(t);
+          this.center = {
+            lon: wrapLongitude(sC.lon + dLon * p),
+            lat: clampLatitude(sC.lat + dLat * p)
+          };
+          this.zoom = sZ + (eZ - sZ) * p;
+          this.bearing = normalizeAngle(sB + dB * p);
+
+          this.render();
+
+          this._flyAnim = { raf: requestAnimationFrame(step) };
+        };
+
+        this.fire('movestart');
+        this._flyAnim = { raf: requestAnimationFrame(step) };
+
+        return this;
+      }
+
+      // ========== CLEANUP ==========
+
+      destroy() {
+        this.stopAnimations();
+        window.removeEventListener('resize', this._onResize);
+
+        // Remove all layers
+        for (const layer of [...this._layers]) {
+          this.removeLayer(layer);
+        }
+
+        // Remove all controls
+        for (const control of [...this._controls]) {
+          control.remove();
+        }
+
+        // Clean up control corners
+        for (const corner in this._controlCorners) {
+          const container = this._controlCorners[corner];
+          if (container && container.parentNode) {
+            container.parentNode.removeChild(container);
+          }
+        }
+        this._controlCorners = {};
+
+        // Remove all handlers
+        for (const name in this._handlers) {
+          this.removeHandler(name);
+        }
+
+        this.fire('unload');
+        console.info('[Atlas.js] Instance destroyed');
+
+        return this;
+      }
+    }
+
+    // ============================================================================
+    // HELPER FUNCTION TO CREATE TILE LAYERS FROM CONFIG
+    // ============================================================================
+
+    function createTileLayerFromConfig(key) {
+      const cfg = LAYERS[key];
+      if (!cfg) {
+        throw new Error(`[Atlas] Unknown layer: ${key}`);
+      }
+
+      return new TileLayer(cfg.urlTemplate, {
+        minZoom: cfg.minZoom,
+        maxZoom: cfg.maxZoom,
+        attribution: cfg.attribution,
+        background: cfg.background,
+        supportsRetina: cfg.supportsRetina,
+        maxCacheSize: cfg.maxCacheSize,
+        subdomains: cfg.subdomains
+      });
+    }
+
+    // ============================================================================
+    // INITIALIZATION
+    // ============================================================================
+
+    let atlasInstance = null;
+
+    function initializeAtlas() {
+      try {
+        if (atlasInstance) {
+          atlasInstance.destroy();
+          atlasInstance = null;
+        }
+
+        atlasInstance = new Atlas("map", {
+          defaultCenter: { lon: 0, lat: 0 },
+          defaultZoom: 3,
+          retina: "auto"
+        });
+
+        const osmLayer = createTileLayerFromConfig('OSM');
+        atlasInstance.setBaseLayer(osmLayer);
+
+        console.info('[Atlas.js] Initialization complete');
+      } catch (error) {
+        console.error('[Atlas.js] Initialization failed:', error);
+      }
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initializeAtlas);
+    } else {
+      initializeAtlas();
+    }
+
+    // Export for module systems (optional)
+    if (typeof module !== 'undefined' && module.exports) {
+      module.exports = {
+        Atlas,
+        TileLayer,
+        GeoJSONLayer,
+        Layer,
+        Control,
+        ZoomControl,
+        LayerControl,
+        FullscreenControl,
+        AttributionControl,
+        CompassControl,
+        GISUtils,
+        WebMercatorProjection
+      };
+    }
+  </script>
+</body>
+</html>
