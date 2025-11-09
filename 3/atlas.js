@@ -1,3 +1,7 @@
+/**
+ * Injects the necessary CSS for Atlas.js into the document head.
+ * @private
+ */
 function injectAtlasCSS() {
   if (document.getElementById('atlas-style')) return;
   var style = document.createElement('style');
@@ -17,9 +21,23 @@ function injectAtlasCSS() {
 }
 injectAtlasCSS();
 
+/**
+ * The main namespace for the Atlas.js library.
+ * @namespace Atlas
+ */
 window.Atlas = window.Atlas || {};
 
+/**
+ * Represents the map object.
+ * @private
+ */
 Atlas.MapProto = {
+  /**
+   * Sets the view of the map (center and zoom).
+   * @param {number[]} center A two-element array of [latitude, longitude].
+   * @param {number} zoom The zoom level.
+   * @returns {Atlas.MapProto} The map instance.
+   */
   setView: function(center, zoom) {
     this._center = center;
     this._zoom = zoom;
@@ -28,23 +46,50 @@ Atlas.MapProto = {
     this._fire('zoom');
     return this;
   },
+
+  /**
+   * Gets the current center of the map.
+   * @returns {number[]} A two-element array of [latitude, longitude].
+   */
   getCenter: function() {
     return this._center.slice();
   },
+
+  /**
+   * Gets the current zoom level of the map.
+   * @returns {number} The current zoom level.
+   */
   getZoom: function() {
     return this._zoom;
   },
+
+  /**
+   * Adds an event listener to the map.
+   * @param {string} event The event type (e.g., 'move', 'zoom').
+   * @param {Function} handler The event handler function.
+   * @returns {Atlas.MapProto} The map instance.
+   */
   on: function(event, handler) {
     if (!this._events[event]) this._events[event] = [];
     this._events[event].push(handler);
     return this;
   },
+
+  /**
+   * Fires an event on the map.
+   * @private
+   */
   _fire: function(event, data) {
     var handlers = this._events[event];
     if (handlers) {
       handlers.forEach(function(fn) { fn(data); });
     }
   },
+
+  /**
+   * Initializes the DOM elements for the map.
+   * @private
+   */
   _initDOM: function() {
     // Controls
     var zoomControl = document.createElement('div');
@@ -98,20 +143,129 @@ Atlas.MapProto = {
       this.setView(this._center, this._zoom + delta);
     });
 
+    // Double-click to zoom
+    this._container.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      const newZoom = this._zoom + 1;
+      const rect = this._container.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      //_latLngToPoint provides the coordinates of the map's center in pixels at a certain zoom level.
+      const centerPx = Atlas._latLngToPoint(this._center[0], this._center[1], this._zoom);
+
+      // The pixel coordinates of the click event relative to the map's center.
+      const dx = mouseX - rect.width / 2;
+      const dy = mouseY - rect.height / 2;
+
+      // The geographical coordinates of the point that was clicked.
+      const clickLatLng = Atlas._pointToLatLng(centerPx[0] + dx, centerPx[1] + dy, this._zoom);
+
+      this.setView(clickLatLng, newZoom);
+    });
+
+    // Touch support
+    let isPinching = false;
+    let pinchStartDistance = 0;
+    let pinchStartZoom = 0;
+
+    this._container.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) {
+        isDragging = true;
+        start = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        startCenter = this._center.slice();
+      } else if (e.touches.length === 2) {
+        e.preventDefault();
+        isDragging = false;
+        isPinching = true;
+        pinchStartDistance = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        pinchStartZoom = this._zoom;
+      }
+    }, { passive: false });
+
+    this._container.addEventListener('touchmove', (e) => {
+      if (isDragging && e.touches.length === 1) {
+        e.preventDefault();
+        var dx = e.touches[0].clientX - start.x;
+        var dy = e.touches[0].clientY - start.y;
+        var startCenterPx = Atlas._latLngToPoint(startCenter[0], startCenter[1], this._zoom);
+        var newCenterPx = [startCenterPx[0] - dx, startCenterPx[1] - dy];
+        this._center = Atlas._pointToLatLng(newCenterPx[0], newCenterPx[1], this._zoom);
+        this._update();
+        this._fire('move');
+      } else if (isPinching && e.touches.length === 2) {
+        e.preventDefault();
+        const newDistance = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        const zoomFactor = newDistance / pinchStartDistance;
+        const newZoom = pinchStartZoom + Math.log2(zoomFactor);
+        const roundedZoom = Math.round(newZoom);
+
+        if (roundedZoom !== this._zoom) {
+          const rect = this._container.getBoundingClientRect();
+          const pinchCenterX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left;
+          const pinchCenterY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top;
+
+          const centerPx = Atlas._latLngToPoint(this._center[0], this._center[1], this._zoom);
+          const dx = pinchCenterX - rect.width / 2;
+          const dy = pinchCenterY - rect.height / 2;
+
+          const pinchLatLng = Atlas._pointToLatLng(centerPx[0] + dx, centerPx[1] + dy, this._zoom);
+
+          this.setView(pinchLatLng, roundedZoom);
+        }
+      }
+    }, { passive: false });
+
+    this._container.addEventListener('touchend', (e) => {
+      if (e.touches.length === 0) {
+        isDragging = false;
+        isPinching = false;
+      } else if (e.touches.length === 1) {
+        isPinching = false;
+        isDragging = true;
+        start = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        startCenter = this._center.slice();
+      }
+    }, { passive: false });
+
     // Responsive
     window.addEventListener('resize', () => this._onResize());
   },
+
+  /**
+   * Handles map resizing.
+   * @private
+   */
   _onResize: function() {
     this._update();
     this._fire('resize');
   },
+
+  /**
+   * Updates all layers and markers.
+   * @private
+   */
   _update: function() {
-    // Update all layers and markers
     this._layers.forEach(layer => layer._renderTiles && layer._renderTiles());
     this._markers.forEach(marker => marker._updatePosition && marker._updatePosition());
   }
 };
 
+/**
+ * Creates a map instance.
+ * @memberof Atlas
+ * @param {string|HTMLElement} container The ID of the container element or the element itself.
+ * @param {object} options Map options.
+ * @param {number[]} options.center The initial center of the map [latitude, longitude].
+ * @param {number} options.zoom The initial zoom level.
+ * @returns {Atlas.MapProto} The map instance.
+ */
 Atlas.map = function(container, options) {
   if (typeof container === 'string') {
     container = document.getElementById(container);
@@ -130,7 +284,16 @@ Atlas.map = function(container, options) {
   return map;
 };
 
+/**
+ * Represents a tile layer.
+ * @private
+ */
 Atlas.TileLayerProto = {
+  /**
+   * Adds the tile layer to the given map.
+   * @param {Atlas.MapProto} map The map instance.
+   * @returns {Atlas.TileLayerProto} The tile layer instance.
+   */
   addTo: function(map) {
     this._map = map;
     map._layers.push(this);
@@ -146,6 +309,11 @@ Atlas.TileLayerProto = {
     }
     return this;
   },
+
+  /**
+   * Renders the tiles on the map.
+   * @private
+   */
   _renderTiles: function() {
     var map = this._map;
     var zoom = map._zoom;
@@ -158,8 +326,14 @@ Atlas.TileLayerProto = {
     var startX = Math.floor((centerPx[0] - size.width / 2) / 256);
     var startY = Math.floor((centerPx[1] - size.height / 2) / 256);
     var newTiles = {};
+    var maxTiles = Math.pow(2, zoom);
+
     for (var x = startX; x < startX + tilesX; x++) {
       for (var y = startY; y < startY + tilesY; y++) {
+        if (y < 0 || y >= maxTiles) {
+          continue;
+        }
+        var wrappedX = ((x % maxTiles) + maxTiles) % maxTiles;
         var tileId = zoom + '_' + x + '_' + y;
         newTiles[tileId] = true;
         var tile;
@@ -168,7 +342,10 @@ Atlas.TileLayerProto = {
         } else {
           tile = document.createElement('img');
           tile.className = 'atlas-tile';
-          var tileUrl = this._urlTemplate.replace('{z}', zoom).replace('{x}', x).replace('{y}', y).replace('{s}', 'a');
+          tile.onerror = function() {
+            this.src = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+          };
+          var tileUrl = this._urlTemplate.replace('{z}', zoom).replace('{x}', wrappedX).replace('{y}', y).replace('{s}', 'a');
           tile.src = tileUrl;
           this._container.appendChild(tile);
           this._tiles[tileId] = tile;
@@ -186,6 +363,14 @@ Atlas.TileLayerProto = {
   }
 };
 
+/**
+ * Creates a tile layer.
+ * @memberof Atlas
+ * @param {string} urlTemplate The URL template for the tiles.
+ * @param {object} [options] Tile layer options.
+ * @param {string} [options.attribution] The attribution text.
+ * @returns {Atlas.TileLayerProto} The tile layer instance.
+ */
 Atlas.tileLayer = function(urlTemplate, options) {
   var layer = Object.create(Atlas.TileLayerProto);
   layer._urlTemplate = urlTemplate;
@@ -193,7 +378,16 @@ Atlas.tileLayer = function(urlTemplate, options) {
   return layer;
 };
 
+/**
+ * Represents a marker.
+ * @private
+ */
 Atlas.MarkerProto = {
+  /**
+   * Adds the marker to the given map.
+   * @param {Atlas.MapProto} map The map instance.
+   * @returns {Atlas.MarkerProto} The marker instance.
+   */
   addTo: function(map) {
     this._map = map;
     map._markers.push(this);
@@ -223,11 +417,23 @@ Atlas.MarkerProto = {
     map.on('zoom', this._updatePosition.bind(this));
     return this;
   },
+
+  /**
+   * Adds an event listener to the marker.
+   * @param {string} event The event type (e.g., 'click').
+   * @param {Function} handler The event handler function.
+   * @returns {Atlas.MarkerProto} The marker instance.
+   */
   on: function(event, handler) {
     if (!this._events[event]) this._events[event] = [];
     this._events[event].push(handler);
     return this;
   },
+
+  /**
+   * Updates the marker's position on the map.
+   * @private
+   */
   _updatePosition: function() {
     var map = this._map;
     var zoom = map._zoom;
@@ -241,6 +447,15 @@ Atlas.MarkerProto = {
   }
 };
 
+/**
+ * Creates a marker.
+ * @memberof Atlas
+ * @param {number[]} latlng The marker's coordinates [latitude, longitude].
+ * @param {object} [options] Marker options.
+ * @param {string} [options.icon] The URL to a custom marker icon.
+ * @param {string} [options.title] The title of the marker (tooltip).
+ * @returns {Atlas.MarkerProto} The marker instance.
+ */
 Atlas.marker = function(latlng, options) {
   var marker = Object.create(Atlas.MarkerProto);
   marker._latlng = latlng;
@@ -249,6 +464,10 @@ Atlas.marker = function(latlng, options) {
   return marker;
 };
 
+/**
+ * Converts latitude/longitude to pixel coordinates.
+ * @private
+ */
 Atlas._latLngToPoint = function(lat, lng, zoom) {
   var scale = 256 * Math.pow(2, zoom);
   var x = (lng + 180) / 360 * scale;
@@ -257,6 +476,10 @@ Atlas._latLngToPoint = function(lat, lng, zoom) {
   return [x, y];
 };
 
+/**
+ * Converts pixel coordinates to latitude/longitude.
+ * @private
+ */
 Atlas._pointToLatLng = function(x, y, zoom) {
   var scale = 256 * Math.pow(2, zoom);
   var lng = (x / scale * 360) - 180;
