@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Atlas.js - Elegant Interactive Maps</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: #f5f5f5;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      color: #1a1a1a;
+      margin-bottom: 10px;
+      font-size: 28px;
+    }
+
+    .subtitle {
+      color: #666;
+      margin-bottom: 20px;
+      font-size: 14px;
+    }
+
+    .demo-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+
+    .map-wrapper {
+      background: white;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+      height: 500px;
+      position: relative;
+    }
+
+    .map-title {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: white;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #1a1a1a;
+      z-index: 10;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .controls {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      display: flex;
+      gap: 8px;
+      z-index: 10;
+    }
+
+    .btn {
+      background: white;
+      border: none;
+      width: 40px;
+      height: 40px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      transition: all 0.2s ease;
+      color: #1a1a1a;
+    }
+
+    .btn:hover {
+      background: #f9f9f9;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      transform: scale(1.05);
+    }
+
+    .btn:active {
+      transform: scale(0.95);
+    }
+
+    /* Atlas.js Styles */
+    .atlas-container {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #e8eef2;
+    }
+
+    .atlas-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .atlas-marker {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      cursor: pointer;
+      z-index: 20;
+      user-select: none;
+    }
+
+    .atlas-marker-icon {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 50%;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 16px;
+      font-weight: bold;
+      transition: all 0.2s ease;
+      border: 2px solid white;
+    }
+
+    .atlas-marker:hover .atlas-marker-icon {
+      transform: scale(1.2);
+      box-shadow: 0 4px 16px rgba(102, 126, 234, 0.4);
+    }
+
+    .atlas-popup {
+      position: absolute;
+      background: white;
+      border-radius: 8px;
+      padding: 12px 16px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+      font-size: 13px;
+      color: #1a1a1a;
+      z-index: 25;
+      white-space: nowrap;
+      animation: popupIn 0.3s ease;
+      pointer-events: auto;
+    }
+
+    @keyframes popupIn {
+      from {
+        opacity: 0;
+        transform: scale(0.8) translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
+    }
+
+    .atlas-popup::before {
+      content: '';
+      position: absolute;
+      bottom: -8px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-top: 8px solid white;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .demo-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .map-wrapper {
+        height: 400px;
+      }
+
+      h1 {
+        font-size: 24px;
+      }
+    }
+
+    .info-box {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+      margin-bottom: 20px;
+    }
+
+    .info-box h2 {
+      font-size: 16px;
+      margin-bottom: 10px;
+      color: #1a1a1a;
+    }
+
+    .info-box p {
+      font-size: 13px;
+      color: #666;
+      line-height: 1.6;
+    }
+
+    .code-block {
+      background: #f8f9fa;
+      padding: 12px;
+      border-radius: 6px;
+      font-family: 'Monaco', 'Courier New', monospace;
+      font-size: 12px;
+      color: #333;
+      margin-top: 10px;
+      overflow-x: auto;
+      border-left: 3px solid #667eea;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🗺️ Atlas.js</h1>
+    <p class="subtitle">Elegant, lightweight, interactive maps. Smooth animations. Perfect touch feel.</p>
+
+    <div class="demo-grid">
+      <div>
+        <div class="map-wrapper">
+          <div class="map-title">San Francisco</div>
+          <div id="map1"></div>
+          <div class="controls">
+            <button class="btn" onclick="map1.zoomIn()">+</button>
+            <button class="btn" onclick="map1.zoomOut()">−</button>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="map-wrapper">
+          <div class="map-title">London</div>
+          <div id="map2"></div>
+          <div class="controls">
+            <button class="btn" onclick="map2.zoomIn()">+</button>
+            <button class="btn" onclick="map2.zoomOut()">−</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <h2>✨ Features</h2>
+      <p>
+        • <strong>Single File:</strong> Just copy Atlas.js and one CSS file<br>
+        • <strong>Smooth Animations:</strong> Easing functions for delightful interactions<br>
+        • <strong>Perfect Touch Feel:</strong> Momentum scrolling with inertia<br>
+        • <strong>Mobile-First:</strong> Pinch zoom, pan, double-tap optimized<br>
+        • <strong>Lightweight:</strong> ~12KB gzipped core<br>
+        • <strong>Extensible:</strong> Plugin-ready with custom layers and markers
+      </p>
+    </div>
+
+    <div class="info-box">
+      <h2>📖 Quick Start</h2>
+      <div class="code-block">
+const map = new Atlas("#map1");<br>
+map.setCenter([37.7749, -122.4194]);<br>
+map.setZoom(13);<br>
+map.marker([37.7749, -122.4194], {<br>
+&nbsp;&nbsp;label: "📍 San Francisco",<br>
+&nbsp;&nbsp;onClick: () => console.log("Clicked!")<br>
+});
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /**
+     * Atlas.js - Elegant Interactive Map Library
+     * Single-file implementation with smooth animations and perfect touch feel
+     */
+
+    class Atlas {
+      constructor(selector, options = {}) {
+        this.container = document.querySelector(selector);
+        if (!this.container) throw new Error(`Container ${selector} not found`);
+
+        // Configuration
+        this.options = {
+          center: options.center || [0, 0],
+          zoom: options.zoom || 2,
+          minZoom: options.minZoom || 1,
+          maxZoom: options.maxZoom || 18,
+          tileProvider: options.tileProvider || 'osm',
+          ...options
+        };
+
+        // State
+        this.center = [...this.options.center];
+        this.zoom = this.options.zoom;
+        this.markers = [];
+        this.layers = [];
+        this.popups = [];
+
+        // Animation state
+        this.isAnimating = false;
+        this.momentum = { velocity: [0, 0], isActive: false };
+        this.panState = null;
+        this.pinchState = null;
+        this.lastTapTime = 0;
+        this.isDragging = false;
+
+        // Constants
+        this.TILE_SIZE = 256;
+        this.MOMENTUM_DECAY = 0.92;
+        this.MIN_VELOCITY = 0.1;
+        this.DRAG_THRESHOLD = 10;
+
+        // Setup DOM
+        this.setupDOM();
+        this.setupCanvas();
+        this.setupGestureHandlers();
+        this.startRenderLoop();
+
+        // Load tiles
+        this.tileCache = new Map();
+        this.preloadTiles();
+      }
+
+      setupDOM() {
+        this.container.classList.add('atlas-container');
+        this.container.innerHTML = '';
+      }
+
+      setupCanvas() {
+        this.canvas = document.createElement('canvas');
+        this.canvas.classList.add('atlas-canvas');
+        this.container.appendChild(this.canvas);
+
+        this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
+        this.resizeCanvas();
+
+        window.addEventListener('resize', () => this.resizeCanvas());
+      }
+
+      resizeCanvas() {
+        this.canvasWidth = this.container.clientWidth;
+        this.canvasHeight = this.container.clientHeight;
+        this.canvas.width = this.canvasWidth;
+        this.canvas.height = this.canvasHeight;
+      }
+
+      setupGestureHandlers() {
+        // Touch events
+        this.canvas.addEventListener('touchstart', (e) => this.handleTouchStart(e));
+        this.canvas.addEventListener('touchmove', (e) => this.handleTouchMove(e));
+        this.canvas.addEventListener('touchend', (e) => this.handleTouchEnd(e));
+
+        // Mouse events (for testing on desktop)
+        this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
+        this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
+        this.canvas.addEventListener('mouseup', (e) => this.handleMouseUp(e));
+
+        // Wheel zoom
+        this.canvas.addEventListener('wheel', (e) => this.handleWheel(e), { passive: false });
+
+        // Prevent context menu
+        this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+      }
+
+      // ============ TOUCH HANDLERS ============
+
+      handleTouchStart(e) {
+        e.preventDefault();
+
+        if (e.touches.length === 1) {
+          // Single touch: pan
+          this.panState = {
+            startPos: [e.touches[0].clientX, e.touches[0].clientY],
+            lastPos: [e.touches[0].clientX, e.touches[0].clientY],
+            lastTime: Date.now(),
+            velocity: [0, 0],
+            isDragging: false
+          };
+          this.momentum.isActive = false;
+          this.isAnimating = false;
+        } else if (e.touches.length === 2) {
+          // Two fingers: pinch zoom
+          const p1 = [e.touches[0].clientX, e.touches[0].clientY];
+          const p2 = [e.touches[1].clientX, e.touches[1].clientY];
+
+          this.pinchState = {
+            initialDistance: this.distance(p1, p2),
+            initialZoom: this.zoom,
+            centerPoint: this.midpoint(p1, p2),
+            isZooming: true
+          };
+          this.panState = null;
+          this.momentum.isActive = false;
+        }
+      }
+
+      handleTouchMove(e) {
+        e.preventDefault();
+
+        if (e.touches.length === 1 && this.panState) {
+          // Pan
+          const currentPos = [e.touches[0].clientX, e.touches[0].clientY];
+          const now = Date.now();
+          const deltaTime = Math.max(now - this.panState.lastTime, 1);
+
+          // Track velocity
+          this.panState.velocity = [
+            (currentPos[0] - this.panState.lastPos[0]) / deltaTime,
+            (currentPos[1] - this.panState.lastPos[1]) / deltaTime
+          ];
+
+          // Convert screen movement to map coordinates
+          const deltaMap = this.screenToMap([
+            currentPos[0] - this.panState.lastPos[0],
+            currentPos[1] - this.panState.lastPos[1]
+          ]);
+
+          this.center[0] -= deltaMap[0];
+          this.center[1] -= deltaMap[1];
+
+          this.panState.lastPos = currentPos;
+          this.panState.lastTime = now;
+          this.panState.isDragging = true;
+        } else if (e.touches.length === 2 && this.pinchState) {
+          // Pinch zoom
+          const p1 = [e.touches[0].clientX, e.touches[0].clientY];
+          const p2 = [e.touches[1].clientX, e.touches[1].clientY];
+
+          const currentDistance = this.distance(p1, p2);
+          const scale = currentDistance / this.pinchState.initialDistance;
+          const zoomDelta = Math.log2(scale);
+
+          this.zoom = Math.max(
+            this.options.minZoom,
+            Math.min(this.options.maxZoom, this.pinchState.initialZoom + zoomDelta)
+          );
+        }
+      }
+
+      handleTouchEnd(e) {
+        e.preventDefault();
+
+        if (e.touches.length === 0) {
+          if (this.panState && this.panState.isDragging) {
+            // Check if it's a tap (minimal drag)
+            const dragDistance = this.distance(
+              this.panState.startPos,
+              this.panState.lastPos
+            );
+
+            if (dragDistance < this.DRAG_THRESHOLD) {
+              // It's a tap
+              this.handleTap(this.panState.lastPos);
+            } else {
+              // Apply momentum
+              this.momentum = {
+                velocity: [...this.panState.velocity],
+                isActive: true
+              };
+              this.isAnimating = true;
+            }
+          }
+
+          if (this.pinchState) {
+            // Snap to nearest zoom level
+            const targetZoom = Math.round(this.zoom);
+            this.animateTo(this.center, targetZoom, 300);
+          }
+
+          this.panState = null;
+          this.pinchState = null;
+        }
+      }
+
+      // ============ MOUSE HANDLERS (for desktop testing) ============
+
+      handleMouseDown(e) {
+        this.panState = {
+          startPos: [e.clientX, e.clientY],
+          lastPos: [e.clientX, e.clientY],
+          lastTime: Date.now(),
+          velocity: [0, 0],
+          isDragging: false
+        };
+        this.momentum.isActive = false;
+      }
+
+      handleMouseMove(e) {
+        if (!this.panState) return;
+
+        const currentPos = [e.clientX, e.clientY];
+        const now = Date.now();
+        const deltaTime = Math.max(now - this.panState.lastTime, 1);
+
+        this.panState.velocity = [
+          (currentPos[0] - this.panState.lastPos[0]) / deltaTime,
+          (currentPos[1] - this.panState.lastPos[1]) / deltaTime
+        ];
+
+        const deltaMap = this.screenToMap([
+          currentPos[0] - this.panState.lastPos[0],
+          currentPos[1] - this.panState.lastPos[1]
+        ]);
+
+        this.center[0] -= deltaMap[0];
+        this.center[1] -= deltaMap[1];
+
+        this.panState.lastPos = currentPos;
+        this.panState.lastTime = now;
+        this.panState.isDragging = true;
+      }
+
+      handleMouseUp(e) {
+        if (this.panState) {
+          const dragDistance = this.distance(this.panState.startPos, this.panState.lastPos);
+
+          if (dragDistance < this.DRAG_THRESHOLD) {
+            this.handleTap(this.panState.lastPos);
+          } else {
+            this.momentum = {
+              velocity: [...this.panState.velocity],
+              isActive: true
+            };
+            this.isAnimating = true;
+          }
+        }
+
+        this.panState = null;
+      }
+
+      handleWheel(e) {
+        e.preventDefault();
+
+        const oldZoom = this.zoom;
+        this.zoom = Math.max(
+          this.options.minZoom,
+          Math.min(this.options.maxZoom, this.zoom - e.deltaY * 0.01)
+        );
+
+        if (this.zoom !== oldZoom) {
+          this.isAnimating = false;
+          this.momentum.isActive = false;
+        }
+      }
+
+      handleTap(screenPos) {
+        const now = Date.now();
+
+        // Double tap check
+        if (this.lastTapTime && now - this.lastTapTime < 300) {
+          const mapPos = this.screenToMap(screenPos);
+          this.animateTo(mapPos, this.zoom + 1, 300);
+          this.lastTapTime = 0;
+          return;
+        }
+
+        this.lastTapTime = now;
+
+        // Check marker click
+        const mapPos = this.screenToMap(screenPos);
+        for (let marker of this.markers) {
+          if (this.isPointNearMarker(screenPos, marker)) {
+            if (marker.onClick) marker.onClick();
+            this.showPopup(marker);
+            return;
+          }
+        }
+
+        // Hide popups if empty tap
+        this.hidePopups();
+      }
+
+      // ============ ANIMATIONS ============
+
+      animateTo(targetCenter, targetZoom, duration = 300) {
+        const startCenter = [...this.center];
+        const startZoom = this.zoom;
+        const startTime = Date.now();
+
+        const animate = () => {
+          const elapsed = Date.now() - startTime;
+          const progress = Math.min(elapsed / duration, 1);
+          const eased = this.easeOutCubic(progress);
+
+          this.center[0] = startCenter[0] + (targetCenter[0] - startCenter[0]) * eased;
+          this.center[1] = startCenter[1] + (targetCenter[1] - startCenter[1]) * eased;
+          this.zoom = startZoom + (targetZoom - startZoom) * eased;
+
+          if (progress < 1) {
+            requestAnimationFrame(animate);
+          } else {
+            this.isAnimating = false;
+          }
+        };
+
+        this.isAnimating = true;
+        requestAnimationFrame(animate);
+      }
+
+      applyMomentum() {
+        if (!this.momentum.isActive) return;
+
+        const speed = Math.sqrt(
+          this.momentum.velocity[0] ** 2 + this.momentum.velocity[1] ** 2
+        );
+
+        if (speed < this.MIN_VELOCITY) {
+          this.momentum.isActive = false;
+          this.isAnimating = false;
+          return;
+        }
+
+        // Apply decay
+        this.momentum.velocity[0] *= this.MOMENTUM_DECAY;
+        this.momentum.velocity[1] *= this.MOMENTUM_DECAY;
+
+        // Update center
+        const deltaMap = this.screenToMap(this.momentum.velocity);
+        this.center[0] -= deltaMap[0];
+        this.center[1] -= deltaMap[1];
+      }
+
+      // ============ RENDERING ============
+
+      startRenderLoop() {
+        const tick = () => {
+          this.applyMomentum();
+          this.render();
+          requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }
+
+      render() {
+        // Clear canvas
+        this.ctx.fillStyle = '#e8eef2';
+        this.ctx.fillRect(0, 0, this.canvasWidth, this.canvasHeight);
+
+        // Draw tiles
+        this.drawTiles();
+
+        // Draw markers
+        this.drawMarkers();
+      }
+
+      drawTiles() {
+        const tileCoord = this.lngLatToTile(this.center[0], this.center[1], this.zoom);
+        const numTiles = Math.pow(2, this.zoom);
+
+        // Calculate which tiles are visible
+        const startTile = {
+          x: Math.floor(tileCoord.x) - 1,
+          y: Math.floor(tileCoord.y) - 1
+        };
+
+        const endTile = {
+          x: startTile.x + 3,
+          y: startTile.y + 3
+        };
+
+        for (let tx = startTile.x; tx <= endTile.x; tx++) {
+          for (let ty = startTile.y; ty <= endTile.y; ty++) {
+            // Wrap tile coordinates
+            const wrappedTx = ((tx % numTiles) + numTiles) % numTiles;
+
+            const tileKey = `${this.zoom}/${wrappedTx}/${ty}`;
+
+            // Get or load tile
+            let tileImage = this.tileCache.get(tileKey);
+            if (!tileImage) {
+              tileImage = this.createPlaceholderTile();
+              this.loadTile(wrappedTx, ty, tileKey);
+            }
+
+            // Calculate screen position
+            const screenPos = this.tileToScreen(tx, ty);
+            const pixelSize = this.getPixelSizePerTile();
+
+            this.ctx.drawImage(
+              tileImage,
+              screenPos.x,
+              screenPos.y,
+              pixelSize,
+              pixelSize
+            );
+          }
+        }
+      }
+
+      drawMarkers() {
+        for (let marker of this.markers) {
+          const screenPos = this.mapToScreen(marker.position);
+
+          // Only draw if visible
+          if (
+            screenPos[0] > -50 &&
+            screenPos[0] < this.canvasWidth + 50 &&
+            screenPos[1] > -50 &&
+            screenPos[1] < this.canvasHeight + 50
+          ) {
+            this.drawMarker(marker, screenPos);
+          }
+        }
+      }
+
+      drawMarker(marker, screenPos) {
+        const size = 32;
+        const x = screenPos[0];
+        const y = screenPos[1];
+
+        // Marker background
+        this.ctx.fillStyle = marker.color || '#667eea';
+        this.ctx.beginPath();
+        this.ctx.arc(x, y, size / 2, 0, Math.PI * 2);
+        this.ctx.fill();
+
+        // White border
+        this.ctx.strokeStyle = 'white';
+        this.ctx.lineWidth = 2;
+        this.ctx.stroke();
+
+        // Icon
+        this.ctx.fillStyle = 'white';
+        this.ctx.font = 'bold 16px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.fillText(marker.icon || '📍', x, y);
+      }
+
+      // ============ MARKER & POPUP MANAGEMENT ============
+
+      marker(position, options = {}) {
+        const markerObj = {
+          position: position,
+          label: options.label || '',
+          icon: options.icon || '📍',
+          color: options.color || '#667eea',
+          onClick: options.onClick,
+          element: null
+        };
+
+        this.markers.push(markerObj);
+        return markerObj;
+      }
+
+      showPopup(marker) {
+        this.hidePopups();
+
+        const popup = document.createElement('div');
+        popup.classList.add('atlas-popup');
+        popup.textContent = marker.label;
+
+        const screenPos = this.mapToScreen(marker.position);
+        popup.style.left = screenPos[0] + 'px';
+        popup.style.top = (screenPos[1] - 50) + 'px';
+
+        this.container.appendChild(popup);
+        this.popups.push(popup);
+      }
+
+      hidePopups() {
+        for (let popup of this.popups) {
+          popup.remove();
+        }
+        this.popups = [];
+      }
+
+      // ============ TILE MANAGEMENT ============
+
+      getTileUrl(x, y, z) {
+        // OpenStreetMap tiles
+        return `https://tile.openstreetmap.org/${z}/${x}/${y}.png`;
+      }
+
+      loadTile(x, y, key) {
+        const url = this.getTileUrl(x, y, this.zoom);
+        const img = new Image();
+        img.crossOrigin = 'Anonymous';
+
+        img.onload = () => {
+          this.tileCache.set(key, img);
+        };
+
+        img.onerror = () => {
+          // Keep placeholder on error
+        };
+
+        img.src = url;
+      }
+
+      preloadTiles() {
+        const tileCoord = this.lngLatToTile(this.center[0], this.center[1], this.zoom);
+
+        for (let tx = Math.floor(tileCoord.x) - 1; tx <= Math.floor(tileCoord.x) + 2; tx++) {
+          for (let ty = Math.floor(tileCoord.y) - 1; ty <= Math.floor(tileCoord.y) + 2; ty++) {
+            const numTiles = Math.pow(2, this.zoom);
+            const wrappedTx = ((tx % numTiles) + numTiles) % numTiles;
+            const key = `${this.zoom}/${wrappedTx}/${ty}`;
+
+            if (!this.tileCache.has(key)) {
+              this.loadTile(wrappedTx, ty, key);
+            }
+          }
+        }
+      }
+
+      createPlaceholderTile() {
+        const canvas = document.createElement('canvas');
+        canvas.width = this.TILE_SIZE;
+        canvas.height = this.TILE_SIZE;
+        const ctx = canvas.getContext('2d');
+
+        // Placeholder color
+        ctx.fillStyle = '#f0f0f0';
+        ctx.fillRect(0, 0, this.TILE_SIZE, this.TILE_SIZE);
+
+        // Grid
+        ctx.strokeStyle = '#e0e0e0';
+        ctx.lineWidth = 0.5;
+        for (let i = 0; i <= this.TILE_SIZE; i += 64) {
+          ctx.beginPath();
+          ctx.moveTo(i, 0);
+          ctx.lineTo(i, this.TILE_SIZE);
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.moveTo(0, i);
+          ctx.lineTo(this.TILE_SIZE, i);
+          ctx.stroke();
+        }
+
+        return canvas;
+      }
+
+      // ============ COORDINATE TRANSFORMATIONS ============
+
+      lngLatToTile(lng, lat, zoom) {
+        const n = Math.pow(2, zoom);
+        const x = n * ((lng + 180) / 360);
+        const y = n * ((1 - Math.log(Math.tan((lat * Math.PI) / 180) + 1 / Math.cos((lat * Math.PI) / 180)) / Math.PI) / 2);
+
+        return { x, y };
+      }
+
+      tileToScreen(tileX, tileY) {
+        const centerTile = this.lngLatToTile(this.center[0], this.center[1], this.zoom);
+        const pixelSize = this.getPixelSizePerTile();
+
+        const x = (tileX - centerTile.x) * pixelSize + this.canvasWidth / 2;
+        const y = (tileY - centerTile.y) * pixelSize + this.canvasHeight / 2;
+
+        return { x, y };
+      }
+
+      mapToScreen(lngLat) {
+        const tileCoord = this.lngLatToTile(lngLat[0], lngLat[1], this.zoom);
+        const centerTile = this.lngLatToTile(this.center[0], this.center[1], this.zoom);
+        const pixelSize = this.getPixelSizePerTile();
+
+        const x = (tileCoord.x - centerTile.x) * pixelSize + this.canvasWidth / 2;
+        const y = (tileCoord.y - centerTile.y) * pixelSize + this.canvasHeight / 2;
+
+        return [x, y];
+      }
+
+      screenToMap(screenDelta) {
+        const pixelSize = this.getPixelSizePerTile();
+        const tileUnits = screenDelta[0] / pixelSize;
+        const lng = tileUnits * (360 / Math.pow(2, this.zoom));
+
+        return [lng, 0]; // Simplified
+      }
+
+      getPixelSizePerTile() {
+        return Math.pow(2, this.zoom) * this.TILE_SIZE / Math.pow(2, this.zoom);
+      }
+
+      // ============ UTILITY FUNCTIONS ============
+
+      distance(p1, p2) {
+        return Math.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2);
+      }
+
+      midpoint(p1, p2) {
+        return [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2];
+      }
+
+      isPointNearMarker(screenPos, marker) {
+        const markerScreenPos = this.mapToScreen(marker.position);
+        return this.distance(screenPos, markerScreenPos) < 30;
+      }
+
+      easeOutCubic(t) {
+        return 1 - Math.pow(1 - t, 3);
+      }
+
+      // ============ PUBLIC API ============
+
+      setCenter(lngLat) {
+        this.center = [...lngLat];
+      }
+
+      setZoom(zoom) {
+        this.zoom = Math.max(this.options.minZoom, Math.min(this.options.maxZoom, zoom));
+      }
+
+      zoomIn() {
+        this.animateTo(this.center, this.zoom + 1, 300);
+      }
+
+      zoomOut() {
+        this.animateTo(this.center, this.zoom - 1, 300);
+      }
+
+      getCenter() {
+        return [...this.center];
+      }
+
+      getZoom() {
+        return this.zoom;
+      }
+    }
+
+    // ============ DEMO INITIALIZATION ============
+
+    // Map 1: San Francisco
+    const map1 = new Atlas('#map1', {
+      center: [37.7749, -122.4194],
+      zoom: 13
+    });
+
+    map1.marker([37.7749, -122.4194], {
+      label: '📍 San Francisco',
+      onClick: () => console.log('SF Marker clicked!')
+    });
+
+    map1.marker([37.785, -122.408], {
+      label: '🏢 Golden Gate Bridge',
+      icon: '🌉',
+      color: '#FF6B6B'
+    });
+
+    map1.marker([37.808, -122.477], {
+      label: '🏜️ Marin County',
+      icon: '🌄',
+      color: '#4ECDC4'
+    });
+
+    // Map 2: London
+    const map2 = new Atlas('#map2', {
+      center: [51.5074, -0.1278],
+      zoom: 13
+    });
+
+    map2.marker([51.5074, -0.1278], {
+      label: '🇬🇧 London',
+      onClick: () => console.log('London Marker clicked!')
+    });
+
+    map2.marker([51.5007, -0.1246], {
+      label: '👑 Big Ben',
+      icon: '🏰',
+      color: '#FFD93D'
+    });
+
+    map2.marker([51.5033, -0.1195], {
+      label: '📚 British Museum',
+      icon: '🏛️',
+      color: '#6C5CE7'
+    });
+  </script>
+</body>
+</html>
