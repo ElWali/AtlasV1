@@ -1,0 +1,3203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="referrer" content="origin">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Atlas.js - Lightweight JavaScript Mapping Library</title>
+<style>
+html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: #000;
+}
+
+#map-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #000;
+    cursor: grab;
+    touch-action: none;
+}
+
+#map-container.dragging {
+    cursor: grabbing;
+}
+
+#map {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.atlas-control-container {
+    position: absolute;
+    z-index: 1000;
+    pointer-events: none;
+}
+
+.atlas-control-container > * {
+    pointer-events: auto;
+}
+
+.atlas-control-top-left {
+    top: 10px;
+    left: 10px;
+}
+
+.atlas-control-top-right {
+    top: 10px;
+    right: 10px;
+}
+
+.atlas-control-bottom-left {
+    bottom: 10px;
+    left: 10px;
+}
+
+.atlas-control-bottom-right {
+    bottom: 10px;
+    right: 10px;
+}
+
+.atlas-control-vertical {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.atlas-control-horizontal {
+    display: flex;
+    flex-direction: row;
+    gap: 5px;
+}
+
+.control-btn {
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid #ccc;
+    font-size: 16px;
+    padding: 8px 10px;
+    cursor: pointer;
+    border-radius: 4px;
+    user-select: none;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    transition: all 0.15s ease;
+    min-width: 36px;
+    height: 36px;
+    text-align: center;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.control-btn:hover {
+    background: rgba(240, 240, 240, 0.95);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+}
+
+.control-btn:active {
+    background: rgba(224, 224, 224, 0.95);
+    transform: scale(0.98);
+}
+
+.control-btn:focus {
+    outline: 2px solid #0078A8;
+    outline-offset: 2px;
+}
+
+.control-btn:disabled {
+    background: rgba(245, 245, 245, 0.9);
+    color: #aaa;
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+#loading {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: rgba(255, 255, 255, 0.9);
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    display: none;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    font-weight: 500;
+}
+
+#loading.visible {
+    display: block;
+    animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+#attribution {
+    position: absolute;
+    bottom: 5px;
+    left: 10px;
+    background: rgba(0, 0, 0, 0.7);
+    color: #fff;
+    font-size: clamp(10px, 1.2vw, 12px);
+    padding: 6px 8px;
+    border-radius: 3px;
+    white-space: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.3) rgba(0, 0, 0, 0.7);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+    max-width: 90%;
+}
+
+#attribution::-webkit-scrollbar {
+    height: 6px;
+}
+
+#attribution::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.7);
+    border-radius: 3px;
+}
+
+#attribution::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 3px;
+}
+
+#attribution::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.5);
+}
+
+#attribution a {
+    color: #4d90fe;
+    text-decoration: none;
+    font-weight: bold;
+    margin-right: 8px;
+    transition: opacity 0.2s ease;
+}
+
+#attribution a:hover {
+    text-decoration: underline;
+    opacity: 0.9;
+}
+
+@keyframes zoom-indicator {
+    0% {
+        transform: scale(0.2);
+        opacity: 0.8;
+    }
+    100% {
+        transform: scale(1.2);
+        opacity: 0;
+    }
+}
+
+</style>
+</head>
+<body>
+<div id="map-container">
+    <canvas id="map"></canvas>
+    <div id="loading">Loading: <span id="loading-count">0</span></div>
+    <div id="attribution"></div>
+</div>
+<script>
+    // Constants
+    const EARTH_RADIUS = 6378137;
+    const EARTH_CIRCUMFERENCE = 2 * Math.PI * EARTH_RADIUS;
+    const MAX_LATITUDE = 85.05112878;
+    const MIN_LATITUDE = -85.05112878;
+    const TILE_SIZE = 256;
+    const TILE_BUFFER = 5;
+    const TILE_TTL = 86400000; // 24 hours in milliseconds
+    const TILE_LOAD_TIMEOUT_MS = 8000;
+    const INERTIA_DECEL = 0.0025;
+    const INERTIA_STOP_SPEED = 0.02;
+    const VELOCITY_WINDOW_MS = 120;
+    const DOUBLE_TAP_MAX_DELAY = 300;
+    const DOUBLE_TAP_MAX_MOVE = 16;
+    const TWO_FINGER_TAP_MAX_DELAY = 250;
+    const TWO_FINGER_TAP_MOVE_THRESH = 10;
+    const ROTATE_MOVE_THRESH_RAD = 0.08;
+    const WHEEL_ZOOM_STEP = 0.25;
+    const WHEEL_ZOOM_DURATION = 220;
+    const TAP_ZOOM_DURATION = 280;
+    const SNAP_DURATION = 300;
+    const FLYTO_DURATION = 800;
+    const RAD2DEG = 180 / Math.PI;
+    const DEG2RAD = Math.PI / 180;
+    const TWO_PI = 2 * Math.PI;
+
+    // Layer configurations
+    const LAYERS = {
+        OSM: {
+            name: "OpenStreetMap",
+            minZoom: 0,
+            maxZoom: 19,
+            urlTemplate: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+            subdomains: ['a', 'b', 'c'],
+            attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>',
+            background: "#e6e6e6",
+            supportsRetina: true,
+            maxCacheSize: 800
+        },
+        ESRI: {
+            name: "Esri Satellite",
+            minZoom: 0,
+            maxZoom: 19,
+            urlTemplate: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+            attribution: 'Tiles © <a href="https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer" target="_blank" rel="noopener noreferrer">Esri</a>',
+            background: "#000000",
+            supportsRetina: false,
+            maxCacheSize: 600
+        },
+        ESRI_TOPO: {
+            name: "Esri Topographic",
+            minZoom: 0,
+            maxZoom: 19,
+            urlTemplate: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+            attribution: 'Tiles © <a href="https://services.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer" target="_blank" rel="noopener noreferrer">Esri</a>',
+            background: "#f5f5f0",
+            supportsRetina: false,
+            maxCacheSize: 600
+        }
+    };
+
+    // Default configuration
+    const CONFIG = {
+        defaultLayer: "OSM",
+        defaultCenter: { lon: 0, lat: 0 },
+        defaultZoom: 3,
+        retina: "auto",
+        retinaSuffix: "@2x"
+    };
+
+    // Easing functions
+    const EASING = {
+        linear: function (t) { return t; },
+        easeInOutCubic: function (t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; },
+        easeOutCubic: function (t) { return 1 - Math.pow(1 - t, 3); },
+        easeInCubic: function (t) { return t * t * t; },
+        easeInOutQuad: function (t) { return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t; }
+    };
+
+    // --- Utility Functions ---
+
+    function normalizeAngle(rad) {
+        return Math.atan2(Math.sin(rad), Math.cos(rad));
+    }
+
+    function shortestAngleDiff(from, to) {
+        return normalizeAngle(to - from);
+    }
+
+    function wrapDeltaLon(delta) {
+        delta = ((delta + 180) % 360 + 360) % 360 - 180;
+        return delta;
+    }
+
+    function wrapLongitude(lon) {
+        while (lon > 180) { lon -= 360; }
+        while (lon < -180) { lon += 360; }
+        return lon;
+    }
+
+    function clampLatitude(lat) {
+        return Math.max(MIN_LATITUDE, Math.min(MAX_LATITUDE, lat));
+    }
+
+    function rotate(x, y, angle) {
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        return { x: x * cos - y * sin, y: x * sin + y * cos };
+    }
+
+    function distance(x1, y1, x2, y2) {
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        return Math.hypot(dx, dy);
+    }
+
+    function pointInPolygon(x, y, ring) {
+        let inside = false;
+        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+            const xi = ring[i].x;
+            const yi = ring[i].y;
+            const xj = ring[j].x;
+            const yj = ring[j].y;
+            const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+            if (intersect) { inside = !inside; }
+        }
+        return inside;
+    }
+
+    // --- Core Classes ---
+
+    class LatLng {
+        constructor(lat, lon) {
+            if (!(this instanceof LatLng)) { return new LatLng(lat, lon); }
+            if (typeof lat !== 'number' || typeof lon !== 'number') {
+                throw new TypeError('LatLng requires numeric lat and lon');
+            }
+            this.lat = clampLatitude(lat);
+            this.lon = wrapLongitude(lon);
+        }
+
+        equals(other) {
+            if (!(other instanceof LatLng)) { return false; }
+            return Math.abs(this.lat - other.lat) < 1e-10 && Math.abs(this.lon - other.lon) < 1e-10;
+        }
+
+        toString() {
+            return `LatLng(${this.lat.toFixed(6)}, ${this.lon.toFixed(6)})`;
+        }
+
+        toJSON() {
+            return { lat: this.lat, lon: this.lon };
+        }
+
+        static from(value) {
+            if (value instanceof LatLng) { return value; }
+            if (Array.isArray(value)) { return new LatLng(value[1], value[0]); }
+            if (typeof value === 'object' && value !== null) { return new LatLng(value.lat || value[1], value.lon || value[0]); }
+            throw new TypeError('Invalid LatLng format');
+        }
+    }
+
+    class ConfigValidator {
+        static schemas = {
+            atlasOptions: {
+                defaultCenter: { type: 'object', validate: v => typeof v.lat === 'number' && typeof v.lon === 'number' },
+                defaultZoom: { type: 'number', min: 0, max: 28 },
+                retina: { type: 'string', enum: ['auto', true, false] }
+            },
+            layerOptions: {
+                minZoom: { type: 'number', min: 0, max: 28 },
+                maxZoom: { type: 'number', min: 0, max: 28 },
+                maxCacheSize: { type: 'number', min: 10, max: 10000 },
+                supportsRetina: { type: 'boolean' }
+            }
+        };
+
+        static validate(data, schema) {
+            const errors = [];
+            for (const [key, rule] of Object.entries(schema)) {
+                const value = data[key];
+                if (value === undefined) {
+                    if (rule.required) { errors.push(`Missing required field: ${key}`); }
+                    continue;
+                }
+                if (rule.type && typeof value !== rule.type) { errors.push(`${key} must be of type ${rule.type}`); continue; }
+                if (rule.min !== undefined && value < rule.min) { errors.push(`${key} must be >= ${rule.min}`); }
+                if (rule.max !== undefined && value > rule.max) { errors.push(`${key} must be <= ${rule.max}`); }
+                if (rule.enum && !rule.enum.includes(value)) { errors.push(`${key} must be one of: ${rule.enum.join(', ')}`); }
+                if (rule.validate && !rule.validate(value)) { errors.push(`${key} failed custom validation`); }
+            }
+            if (errors.length > 0) {
+                throw new Error(`Configuration validation failed:\n${errors.join('\n')}`);
+            }
+            return true;
+        }
+    }
+
+    class PerformanceMonitor {
+        constructor() {
+            this._metrics = new Map();
+            this._frameMetrics = [];
+        }
+
+        mark(name) {
+            this._metrics.set(`${name}-start`, performance.now());
+        }
+
+        measure(name) {
+            const start = this._metrics.get(`${name}-start`);
+            if (!start) { return null; }
+            const duration = performance.now() - start;
+            this._metrics.delete(`${name}-start`);
+            return { name, duration, timestamp: Date.now() };
+        }
+
+        recordFrame(metrics) {
+            this._frameMetrics.push({
+                timestamp: Date.now(),
+                fps: 1000 / (metrics.frameTime || 16.67),
+                renderTime: metrics.renderTime || 0
+            });
+            if (this._frameMetrics.length > 300) { this._frameMetrics.shift(); }
+        }
+
+        getAverageFPS() {
+            if (this._frameMetrics.length === 0) { return 0; }
+            const sum = this._frameMetrics.reduce((acc, m) => acc + m.fps, 0);
+            return sum / this._frameMetrics.length;
+        }
+
+        getMetricsReport() {
+            return {
+                frameCount: this._frameMetrics.length,
+                averageFPS: this.getAverageFPS(),
+                averageRenderTime: this._frameMetrics.reduce((acc, m) => acc + m.renderTime, 0) / this._frameMetrics.length,
+                memory: performance.memory ? {
+                    usedJSHeapSize: performance.memory.usedJSHeapSize,
+                    totalJSHeapSize: performance.memory.totalJSHeapSize,
+                    jsHeapSizeLimit: performance.memory.jsHeapSizeLimit
+                } : null
+            };
+        }
+    }
+
+    class ThrottleDebounce {
+        static throttle(fn, delay) {
+            let lastCall = 0;
+            let timeoutId = null;
+            return function throttled(...args) {
+                const now = Date.now();
+                const timeSinceLastCall = now - lastCall;
+                if (timeSinceLastCall >= delay) {
+                    lastCall = now;
+                    fn.apply(this, args);
+                } else {
+                    clearTimeout(timeoutId);
+                    timeoutId = setTimeout(() => {
+                        lastCall = now;
+                        fn.apply(this, args);
+                    }, delay - timeSinceLastCall);
+                }
+            };
+        }
+
+        static debounce(fn, delay, immediate = false) {
+            let timeoutId = null;
+            let lastResult;
+            return function debounced(...args) {
+                const later = () => {
+                    timeoutId = null;
+                    if (!immediate) { lastResult = fn.apply(this, args); }
+                };
+                const callNow = immediate && !timeoutId;
+                clearTimeout(timeoutId);
+                timeoutId = setTimeout(later, delay);
+                if (callNow) { lastResult = fn.apply(this, args); }
+                return lastResult;
+            };
+        }
+    }
+
+    class ErrorBoundary {
+        constructor(context) {
+            this.context = context;
+            this.errors = [];
+        }
+
+        async execute(asyncFn, errorHandler = null) {
+            try {
+                return await asyncFn();
+            } catch (error) {
+                this._handleError(error, errorHandler);
+            }
+        }
+
+        _handleError(error, handler) {
+            this.errors.push({
+                message: error.message,
+                stack: error.stack,
+                timestamp: Date.now(),
+                context: this.context
+            });
+            if (handler) { handler(error); }
+            else { console.error(`[Atlas] Error in ${this.context}:`, error); }
+            if (typeof this.reportError === 'function') { this.reportError(error); }
+        }
+
+        getErrors() {
+            return [...this.errors];
+        }
+
+        clearErrors() {
+            this.errors = [];
+        }
+    }
+
+    // --- Projection Classes ---
+
+    class Projection {
+        project(latlng) { throw new Error('project() must be implemented'); }
+        unproject(point) { throw new Error('unproject() must be implemented'); }
+        latLngToTile(latlng, zoom) { throw new Error('latLngToTile() must be implemented'); }
+        tileToLatLng(x, y, zoom) { throw new Error('tileToLatLng() must be implemented'); }
+    }
+
+    class WebMercatorProjection extends Projection {
+        project(latlng) {
+            const d = EARTH_RADIUS;
+            const lat = Math.max(MIN_LATITUDE, Math.min(MAX_LATITUDE, latlng.lat));
+            const sin = Math.sin(lat * DEG2RAD);
+            return { x: d * latlng.lon * DEG2RAD, y: d * Math.log((1 + sin) / (1 - sin)) / 2 };
+        }
+
+        unproject(point) {
+            const d = EARTH_RADIUS;
+            return {
+                lon: (point.x / d) * RAD2DEG,
+                lat: (2 * Math.atan(Math.exp(point.y / d)) - Math.PI / 2) * RAD2DEG
+            };
+        }
+
+        latLngToTile(latlng, zoom) {
+            if (!Number.isFinite(latlng.lat) || !Number.isFinite(latlng.lon)) { throw new Error('Invalid latitude or longitude'); }
+            const lat = Math.max(MIN_LATITUDE, Math.min(MAX_LATITUDE, latlng.lat));
+            const lon = wrapLongitude(latlng.lon);
+            const scale = Math.pow(2, zoom);
+            const n = scale;
+            const lonRad = lon * DEG2RAD;
+            const latRad = lat * DEG2RAD;
+            const x = ((lonRad + Math.PI) / TWO_PI) * n;
+            const y = (1 - Math.log(Math.tan(Math.PI / 4 + latRad / 2)) / Math.PI) / 2 * n;
+
+            if (!Number.isFinite(x) || !Number.isFinite(y)) {
+                console.error(`[Atlas] Projection produced non-finite values: x=${x}, y=${y}`);
+                return { x: n / 2, y: n / 2 }; // Fallback to center
+            }
+            return { x, y };
+        }
+
+        tileToLatLng(x, y, zoom) {
+            const scale = Math.pow(2, zoom);
+            if (!Number.isFinite(x) || !Number.isFinite(y)) { throw new Error('Invalid tile coordinates'); }
+            const lon = (x / scale) * 360 - 180;
+            const latRad = Math.PI - (y / scale) * TWO_PI;
+            const lat = (2 * Math.atan(Math.exp(latRad)) - Math.PI / 2) * RAD2DEG;
+            return { lon: wrapLongitude(lon), lat: clampLatitude(lat) };
+        }
+    }
+
+    const DEFAULT_PROJECTION = new WebMercatorProjection();
+
+    // --- GIS Utilities ---
+
+    class GISUtils {
+        static wrapLongitude(lon) { return wrapLongitude(lon); }
+        static clampLatitude(lat) { return clampLatitude(lat); }
+        static getResolution(lat, zoom) {
+            return (EARTH_CIRCUMFERENCE * Math.cos(lat * DEG2RAD)) / (Math.pow(2, zoom) * TILE_SIZE);
+        }
+        static formatDistance(meters) {
+            if (meters < 1000) { return Math.round(meters) + " m"; }
+            return (meters / 1000).toFixed(1) + " km";
+        }
+        static tileToLatLng(x, y, z) { return DEFAULT_PROJECTION.tileToLatLng(x, y, z); }
+        static latLngToTile(lat, lng, z) { return DEFAULT_PROJECTION.latLngToTile({ lat, lon: lng }, z); }
+        static bearing(lat1, lon1, lat2, lon2) {
+            const dLon = (lon2 - lon1) * DEG2RAD;
+            const y = Math.sin(dLon) * Math.cos(lat2 * DEG2RAD);
+            const x = Math.cos(lat1 * DEG2RAD) * Math.sin(lat2 * DEG2RAD) - Math.sin(lat1 * DEG2RAD) * Math.cos(lat2 * DEG2RAD) * Math.cos(dLon);
+            return Math.atan2(y, x);
+        }
+        static distance(lat1, lon1, lat2, lon2) {
+            const R = EARTH_RADIUS;
+            const dLat = (lat2 - lat1) * DEG2RAD;
+            const dLon = (lon2 - lon1) * DEG2RAD;
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * DEG2RAD) * Math.cos(lat2 * DEG2RAD) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.asin(Math.sqrt(a));
+            return R * c;
+        }
+    }
+
+    // --- Spatial Index (RTree) ---
+
+    class SpatialIndex {
+        constructor(maxChildren = 9) {
+            this.maxChildren = maxChildren;
+            this.root = null;
+            this._size = 0;
+        }
+
+        insert(item) {
+            if (!this.root) {
+                this.root = {
+                    children: [item],
+                    leaf: true,
+                    minX: item.minX,
+                    minY: item.minY,
+                    maxX: item.maxX,
+                    maxY: item.maxY
+                };
+            } else {
+                this._insert(this.root, item);
+            }
+            this._size++;
+        }
+
+        _insert(node, item) {
+            if (node.leaf) {
+                node.children.push(item);
+                this._updateBounds(node);
+                if (node.children.length > this.maxChildren) {
+                    this._split(node);
+                }
+            } else {
+                const bestChild = this._findBestChild(node, item);
+                this._insert(bestChild, item);
+                this._updateBounds(node);
+            }
+        }
+
+        _findBestChild(node, item) {
+            let bestChild = node.children[0];
+            let bestEnlargement = this._calculateEnlargement(bestChild, item);
+            for (let i = 1; i < node.children.length; i++) {
+                const child = node.children[i];
+                const enlargement = this._calculateEnlargement(child, item);
+                if (enlargement < bestEnlargement) {
+                    bestEnlargement = enlargement;
+                    bestChild = child;
+                }
+            }
+            return bestChild;
+        }
+
+        _calculateEnlargement(bounds, item) {
+            const enlargedArea = (Math.max(bounds.maxX, item.maxX) - Math.min(bounds.minX, item.minX)) * (Math.max(bounds.maxY, item.maxY) - Math.min(bounds.minY, item.minY));
+            const originalArea = (bounds.maxX - bounds.minX) * (bounds.maxY - bounds.minY);
+            return enlargedArea - originalArea;
+        }
+
+        _updateBounds(node) {
+            if (node.children.length === 0) { return; }
+            node.minX = Math.min(...node.children.map(c => c.minX));
+            node.minY = Math.min(...node.children.map(c => c.minY));
+            node.maxX = Math.max(...node.children.map(c => c.maxX));
+            node.maxY = Math.max(...node.children.map(c => c.maxY));
+        }
+
+        _split(node) {
+            node.children.sort((a, b) => a.minX - b.minX);
+            const mid = Math.floor(node.children.length / 2);
+            const left = { children: node.children.slice(0, mid), leaf: node.leaf };
+            const right = { children: node.children.slice(mid), leaf: node.leaf };
+            this._updateBounds(left);
+            this._updateBounds(right);
+            node.children = [left, right];
+            node.leaf = false;
+        }
+
+        search(bounds) {
+            const results = [];
+            if (this.root) { this._search(this.root, bounds, results); }
+            return results;
+        }
+
+        _search(node, bounds, results) {
+            if (!this._intersects(node, bounds)) { return; }
+            if (node.leaf) {
+                for (const child of node.children) {
+                    if (this._intersects(child, bounds)) { results.push(child.data); }
+                }
+            } else {
+                for (const child of node.children) {
+                    this._search(child, bounds, results);
+                }
+            }
+        }
+
+        _intersects(a, b) {
+            return !(a.maxX < b.minX || a.minX > b.maxX || a.maxY < b.minY || a.minY > b.maxY);
+        }
+
+        clear() {
+            this.root = null;
+            this._size = 0;
+        }
+
+        size() {
+            return this._size;
+        }
+    }
+
+    // --- Event Emitter ---
+
+    class EventEmitter {
+        constructor() {
+            this._events = new Map();
+            this._firingEvents = new Set();
+        }
+
+        on(type, fn) {
+            if (typeof fn !== 'function') { throw new TypeError('Listener must be a function'); }
+            if (!this._events.has(type)) { this._events.set(type, []); }
+            const listeners = this._events.get(type);
+            if (!listeners.some(l => l === fn)) { listeners.push(fn); }
+            return () => this.off(type, fn);
+        }
+
+        off(type, fn) {
+            if (!this._events.has(type)) { return this; }
+            const listeners = this._events.get(type);
+            const index = listeners.indexOf(fn);
+            if (index > -1) {
+                if (this._firingEvents.has(type)) {
+                    listeners[index] = null; // Mark for removal later
+                } else {
+                    listeners.splice(index, 1);
+                }
+            }
+            return this;
+        }
+
+        fire(type, data = {}) {
+            if (!this._events.has(type)) { return; }
+            const listeners = this._events.get(type);
+            if (!listeners.length) { return; }
+            data.type = type;
+            data.target = this;
+            this._firingEvents.add(type);
+
+            const errorBoundary = this.errorBoundary || this._map?.errorBoundary; // Check for error boundary on emitter or map
+            try {
+                for (let i = 0; i < listeners.length; i++) {
+                    const fn = listeners[i];
+                    if (fn === null) { continue; } // Skip marked listeners
+                    if (errorBoundary) {
+                        errorBoundary.execute(() => fn(data));
+                    } else {
+                        try {
+                            fn(data);
+                        } catch (e) {
+                            console.error(`[Atlas] Error in '${type}' event listener:`, e);
+                        }
+                    }
+                }
+            } finally {
+                // Remove null listeners after firing
+                const newListeners = listeners.filter(l => l !== null);
+                if (newListeners.length === 0) {
+                    this._events.delete(type);
+                } else {
+                    this._events.set(type, newListeners);
+                }
+                this._firingEvents.delete(type);
+            }
+            return this;
+        }
+
+        has(type) {
+            return this._events.has(type) && this._events.get(type).length > 0;
+        }
+
+        clear(type) {
+            if (type) { this._events.delete(type); }
+            else { this._events.clear(); }
+            return this;
+        }
+
+        listeners(type) {
+            return this._events.get(type) ? [...this._events.get(type)] : [];
+        }
+    }
+
+    // --- Render Context Wrapper ---
+
+    class RenderContext {
+        constructor(ctx) {
+            this._ctx = ctx;
+            this._saveStack = [];
+        }
+
+        save() {
+            this._ctx.save();
+            this._saveStack.push({
+                fillStyle: this._ctx.fillStyle,
+                strokeStyle: this._ctx.strokeStyle,
+                lineWidth: this._ctx.lineWidth,
+                globalAlpha: this._ctx.globalAlpha,
+                globalCompositeOperation: this._ctx.globalCompositeOperation,
+                transform: this._ctx.getTransform()
+            });
+        }
+
+        restore() {
+            if (this._saveStack.length === 0) {
+                console.warn('[Atlas] Restore called without matching save');
+                return;
+            }
+            this._ctx.restore();
+            this._saveStack.pop();
+        }
+
+        get drawingState() {
+            return { saveCount: this._saveStack.length, isBalanced: this._saveStack.length === 0 };
+        }
+
+        drawImage(...args) { return this._ctx.drawImage(...args); }
+        fillRect(...args) { return this._ctx.fillRect(...args); }
+        clearRect(...args) { return this._ctx.clearRect(...args); }
+        setTransform(...args) { return this._ctx.setTransform(...args); }
+        translate(...args) { return this._ctx.translate(...args); }
+        scale(...args) { return this._ctx.scale(...args); }
+        rotate(...args) { return this._ctx.rotate(...args); }
+        beginPath(...args) { return this._ctx.beginPath(...args); }
+        moveTo(...args) { return this._ctx.moveTo(...args); }
+        lineTo(...args) { return this._ctx.lineTo(...args); }
+        closePath(...args) { return this._ctx.closePath(...args); }
+        arc(...args) { return this._ctx.arc(...args); }
+        stroke(...args) { return this._ctx.stroke(...args); }
+        fill(...args) { return this._ctx.fill(...args); }
+        fillText(...args) { return this._ctx.fillText(...args); }
+        strokeText(...args) { return this._ctx.strokeText(...args); }
+        measureText(...args) { return this._ctx.measureText(...args); }
+        getImageData(...args) { return this._ctx.getImageData(...args); }
+        putImageData(...args) { return this._ctx.putImageData(...args); }
+        createLinearGradient(...args) { return this._ctx.createLinearGradient(...args); }
+        createRadialGradient(...args) { return this._ctx.createRadialGradient(...args); }
+
+        get fillStyle() { return this._ctx.fillStyle; }
+        set fillStyle(v) { this._ctx.fillStyle = v; }
+        get strokeStyle() { return this._ctx.strokeStyle; }
+        set strokeStyle(v) { this._ctx.strokeStyle = v; }
+        get lineWidth() { return this._ctx.lineWidth; }
+        set lineWidth(v) { this._ctx.lineWidth = v; }
+        get globalAlpha() { return this._ctx.globalAlpha; }
+        set globalAlpha(v) { this._ctx.globalAlpha = v; }
+        get imageSmoothingEnabled() { return this._ctx.imageSmoothingEnabled; }
+        set imageSmoothingEnabled(v) { this._ctx.imageSmoothingEnabled = v; }
+        get lineCap() { return this._ctx.lineCap; }
+        set lineCap(v) { this._ctx.lineCap = v; }
+        get lineJoin() { return this._ctx.lineJoin; }
+        set lineJoin(v) { this._ctx.lineJoin = v; }
+        get textBaseline() { return this._ctx.textBaseline; }
+        set textBaseline(v) { this._ctx.textBaseline = v; }
+        get textAlign() { return this._ctx.textAlign; }
+        set textAlign(v) { this._ctx.textAlign = v; }
+        get font() { return this._ctx.font; }
+        set font(v) { this._ctx.font = v; }
+    }
+
+    // --- Base Layer Class ---
+
+    class Layer extends EventEmitter {
+        constructor(options = {}) {
+            super();
+            this.options = options;
+            this._map = null;
+        }
+
+        addTo(map) {
+            if (this._map) { this._map.removeLayer(this); }
+            this._map = map;
+            if (map) {
+                map.addLayer(this);
+                this.onAdd();
+            }
+            return this;
+        }
+
+        remove() {
+            if (this._map) {
+                this._map.removeLayer(this);
+                this.onRemove();
+                this._map = null;
+            }
+            return this;
+        }
+
+        onAdd() { }
+        onRemove() { }
+        render() { }
+    }
+
+    // --- Tile Layer Class ---
+
+    class TileLayer extends Layer {
+        constructor(urlTemplate, options = {}) {
+            super(options);
+            if (typeof urlTemplate !== 'string') { throw new TypeError('urlTemplate must be a string'); }
+            this.urlTemplate = urlTemplate;
+
+            const defaults = {
+                minZoom: 0,
+                maxZoom: 18,
+                attribution: '',
+                background: '#ffffff',
+                supportsRetina: false,
+                maxCacheSize: 800,
+                subdomains: null,
+                maxConcurrentLoads: 12
+            };
+            this.options = { ...defaults, ...options };
+            ConfigValidator.validate(this.options, ConfigValidator.schemas.layerOptions);
+
+            this.tileCache = new Map();
+            this.loadingTiles = new Set();
+            this.loadingControllers = new Map();
+            this._loadingPromises = new Map();
+            this._retinaAvailable = true;
+            this._lastRenderedState = { center: null, zoom: null, bearing: null };
+            this._renderTilesArray = [];
+            this._evictionScheduled = false;
+            this._evictionInProgress = false;
+            this._tileAccessOrder = new Map();
+            this._pendingTileQueue = [];
+        }
+
+        _getTileUrl(x, y, z) {
+            if (!Number.isInteger(z) || z < this.options.minZoom || z > this.options.maxZoom) { throw new Error(`Invalid zoom level: ${z}`); }
+            const scale = Math.pow(2, z);
+            x = Number.isInteger(x) ? x : Math.floor(x);
+            y = Number.isInteger(y) ? y : Math.floor(y);
+
+            let wrappedX = ((x % scale) + scale) % scale;
+            const clampedY = Math.max(0, Math.min(scale - 1, y));
+
+            if (!Number.isFinite(wrappedX) || !Number.isFinite(clampedY)) { throw new Error(`Invalid tile coordinates: x=${x}, y=${y}, z=${z}`); }
+
+            let url = this.urlTemplate.replace('{z}', z).replace('{x}', Math.floor(wrappedX)).replace('{y}', Math.floor(clampedY));
+
+            if (url.includes('{s}') && Array.isArray(this.options.subdomains) && this.options.subdomains.length > 0) {
+                const index = (Math.abs(x) + Math.abs(y) + z) % this.options.subdomains.length;
+                const subdomain = this.options.subdomains[index];
+                if (typeof subdomain === 'string' && /^[a-z0-9-]+$/.test(subdomain)) {
+                    url = url.replace('{s}', subdomain);
+                }
+            }
+
+            if (this.options.supportsRetina && this._shouldRequestRetina()) {
+                url = url.replace(/\.(png|jpg|jpeg|webp)$/i, `${CONFIG.retinaSuffix}.$1`);
+            }
+
+            try {
+                new URL(url);
+            } catch (e) {
+                throw new Error(`Generated invalid URL: ${url}`);
+            }
+            return url;
+        }
+
+        _shouldRequestRetina() {
+            if (!this._retinaAvailable) { return false; }
+            const mode = CONFIG.retina;
+            const dpr = window.devicePixelRatio || 1;
+            if (mode === true) { return true; }
+            if (mode === 'auto') { return dpr > 1.5; }
+            return false;
+        }
+
+        async _loadTile(key, url) {
+            if (this.tileCache.has(key)) {
+                const cached = this.tileCache.get(key);
+                cached.lastUsed = Date.now();
+                return cached;
+            }
+
+            if (this._loadingPromises.has(key)) {
+                return this._loadingPromises.get(key);
+            }
+
+            if (this.loadingTiles.size >= this.options.maxConcurrentLoads) {
+                this._pendingTileQueue.push({ key, url });
+                return new Promise((resolve, reject) => {
+                    this._loadingPromises.set(key, { resolve, reject, queued: true });
+                });
+            }
+
+            return this._startTileLoad(key, url);
+        }
+
+        async _startTileLoad(key, url) {
+            const controller = new AbortController();
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+
+            const tile = { img, loaded: false, loadedAt: 0, lastUsed: Date.now(), controller, url };
+            this.tileCache.set(key, tile);
+            this.loadingTiles.add(key);
+            this.loadingControllers.set(key, controller);
+
+            const loadPromise = new Promise((resolve, reject) => {
+                const timeoutId = setTimeout(() => {
+                    if (this.loadingTiles.has(key)) {
+                        controller.abort();
+                        this._cleanupTile(key);
+                        this.fire('tileerror', { tile: key, url: url, error: new Error('Timeout') });
+                        reject(new Error(`Timeout loading tile: ${url}`));
+                    }
+                }, TILE_LOAD_TIMEOUT_MS);
+
+                img.onload = async () => {
+                    clearTimeout(timeoutId);
+                    if (controller.signal.aborted) {
+                        reject(new Error('Load aborted'));
+                        return;
+                    }
+                    try {
+                        if (img.decode) { await img.decode(); } // Await decode if available
+                    } catch (e) {
+                        console.warn(`[Atlas] Image decode failed for ${url}`, e);
+                        // Continue anyway, image might still be usable
+                    }
+                    tile.loaded = true;
+                    tile.loadedAt = Date.now();
+                    this._cleanupTile(key); // Remove from loading sets
+                    if (this._map) { this._map.scheduleRender(); }
+                    this.fire('tileload', { tile: key, url: url });
+                    resolve(tile);
+                    this._processNextQueuedTile(); // Process next queued tile if any
+                };
+
+                img.onerror = (error) => {
+                    clearTimeout(timeoutId);
+                    if (controller.signal.aborted) {
+                        reject(new Error('Load aborted'));
+                        return;
+                    }
+                    console.warn(`[Atlas] Failed to load tile: ${url}`, error);
+
+                    // If retina failed, try standard resolution
+                    if (this.options.supportsRetina && url.includes(CONFIG.retinaSuffix)) {
+                        this._retinaAvailable = false; // Disable retina for this session
+                        console.info('[Atlas] Retina tiles not available. Disabling retina mode.');
+                        const standardUrl = url.replace(new RegExp(CONFIG.retinaSuffix, 'g'), '');
+                        this._startTileLoad(key, standardUrl).then(resolve).catch(reject);
+                        return;
+                    }
+
+                    this._cleanupTile(key);
+                    this.fire('tileerror', { tile: key, url: url, error: error });
+                    reject(error);
+                    this._processNextQueuedTile(); // Process next queued tile if any
+                };
+
+                img.src = url;
+            });
+
+            this._loadingPromises.set(key, loadPromise);
+            return loadPromise;
+        }
+
+        _processNextQueuedTile() {
+            if (this._pendingTileQueue.length === 0) { return; }
+            if (this.loadingTiles.size >= this.options.maxConcurrentLoads) { return; }
+
+            const { key, url } = this._pendingTileQueue.shift();
+            const holder = this._loadingPromises.get(key);
+            if (holder && holder.queued) { // Only process if it was queued
+                this._startTileLoad(key, url).then(holder.resolve).catch(holder.reject);
+                this._loadingPromises.delete(key); // Clean up the holder promise
+            }
+        }
+
+        _cleanupTile(key) {
+            this.loadingTiles.delete(key);
+            this.loadingControllers.delete(key);
+            this._loadingPromises.delete(key);
+        }
+
+        _reloadTile(key, url) {
+            const existing = this.tileCache.get(key);
+            if (!existing) { return; }
+            // Start a new load, ignore errors
+            this._startTileLoad(key, url).catch(e => { });
+        }
+
+        _evictCache() {
+            if (this._evictionScheduled || this._evictionInProgress) { return; }
+            this._evictionScheduled = true;
+
+            const performEviction = () => {
+                this._evictionScheduled = false;
+                if (this._evictionInProgress) { return; }
+                this._evictionInProgress = true;
+
+                try {
+                    if (this.tileCache.size <= this.options.maxCacheSize * 0.8) { return; }
+
+                    const entries = Array.from(this.tileCache.entries())
+                        .map(([key, tile]) => ({ key, tile, lastUsed: this._tileAccessOrder.get(key) || tile.lastUsed || 0 }))
+                        .sort((a, b) => a.lastUsed - b.lastUsed);
+
+                    const targetSize = Math.floor(this.options.maxCacheSize * 0.7);
+                    const removeCount = entries.length - targetSize;
+
+                    for (let i = 0; i < removeCount && i < entries.length; i++) {
+                        const { key, tile } = entries[i];
+                        const controller = this.loadingControllers.get(key);
+                        if (controller) { controller.abort(); }
+                        if (tile.img) {
+                            tile.img.src = ''; // Free memory
+                            tile.img = null;
+                        }
+                        this.tileCache.delete(key);
+                        this.loadingTiles.delete(key);
+                        this._tileAccessOrder.delete(key);
+                        this._loadingPromises.delete(key); // Also remove from promises map
+                    }
+                } finally {
+                    this._evictionInProgress = false;
+                }
+            };
+
+            if ('requestIdleCallback' in window) {
+                requestIdleCallback(performEviction, { timeout: 3000 });
+            } else {
+                setTimeout(performEviction, 100);
+            }
+        }
+
+        _recordTileAccess(key) {
+            this._tileAccessOrder.set(key, Date.now());
+        }
+
+        _preloadAdjacentTiles() {
+            if (!this._map) { return; }
+            const zInt = Math.floor(this._map.zoom);
+            const adjacentZooms = [Math.max(this.options.minZoom, zInt - 1), Math.min(this.options.maxZoom, zInt + 1)].filter(z => z !== zInt);
+
+            // Only preload if zoom is near integer (e.g., between 10.7 and 11.3)
+            if (Math.abs(this._map.zoom - zInt) > 0.3) { return; }
+
+            const wrappedCenterLon = wrapLongitude(this._map.center.lon);
+            const ct = this._map.projection.latLngToTile({ lat: this._map.center.lat, lon: wrappedCenterLon }, zInt);
+            const ts = TILE_SIZE;
+            const w = this._map.canvas.width / this._map.dpr;
+            const h = this._map.canvas.height / this._map.dpr;
+            const viewportTiles = Math.ceil(Math.max(w, h) / ts) + TILE_BUFFER;
+
+            for (const dz of adjacentZooms) {
+                const scaleDiff = Math.pow(2, Math.abs(dz - zInt));
+                const startX = Math.floor(ct.x * (dz > zInt ? scaleDiff : 1 / scaleDiff) - viewportTiles / 2);
+                const startY = Math.floor(ct.y * (dz > zInt ? scaleDiff : 1 / scaleDiff) - viewportTiles / 2);
+
+                for (let dx = 0; dx < viewportTiles; dx++) {
+                    for (let dy = 0; dy < viewportTiles; dy++) {
+                        const X = startX + dx;
+                        const Y = startY + dy;
+                        const key = `${dz}/${X}/${Y}`;
+                        if (!this.tileCache.has(key) && !this.loadingTiles.has(key)) {
+                            const url = this._getTileUrl(X, Y, dz);
+                            this._loadTile(key, url).catch(e => { }); // Ignore errors for preloads
+                        }
+                    }
+                }
+            }
+        }
+
+        render() {
+            if (!this._map) { return; }
+
+            const ctx = this._map.ctx;
+            const w = this._map.canvas.width / this._map.dpr;
+            const h = this._map.canvas.height / this._map.dpr;
+
+            const zInt = Math.floor(this._map.zoom);
+            const scaleFactor = Math.pow(2, this._map.zoom - zInt);
+            const ts = TILE_SIZE;
+
+            const wrappedCenterLon = wrapLongitude(this._map.center.lon);
+            const ct = this._map.projection.latLngToTile({ lat: this._map.center.lat, lon: wrappedCenterLon }, zInt);
+
+            // Calculate visible area considering bearing/rotation
+            const absCos = Math.abs(Math.cos(this._map.bearing));
+            const absSin = Math.abs(Math.sin(this._map.bearing));
+            const needW = w * absCos + h * absSin;
+            const needH = w * absSin + h * absCos;
+
+            const cols = Math.ceil(needW / (ts * scaleFactor)) + TILE_BUFFER;
+            const rows = Math.ceil(needH / (ts * scaleFactor)) + TILE_BUFFER;
+
+            const startX = Math.floor(ct.x - cols / 2);
+            const startY = Math.floor(ct.y - rows / 2);
+
+            this._renderTilesArray.length = 0; // Reuse array
+            const centerX = cols / 2;
+            const centerY = rows / 2;
+
+            for (let dx = 0; dx < cols; dx++) {
+                for (let dy = 0; dy < rows; dy++) {
+                    const X = startX + dx;
+                    const Y = startY + dy;
+                    const distSq = (dx - centerX) ** 2 + (dy - centerY) ** 2;
+                    this._renderTilesArray.push({ X, Y, distSq });
+                }
+            }
+
+            this._renderTilesArray.sort((a, b) => a.distSq - b.distSq); // Sort by distance
+
+            ctx.save();
+            ctx.translate(w / 2, h / 2);
+            ctx.rotate(this._map.bearing);
+            ctx.scale(scaleFactor, scaleFactor);
+
+            // Improve image quality during zoom if zoom level is fractional
+            ctx.imageSmoothingEnabled = this._map.zoom > zInt + 0.5;
+
+            for (const { X, Y } of this._renderTilesArray) {
+                const key = `${zInt}/${X}/${Y}`;
+                const url = this._getTileUrl(X, Y, zInt);
+                let tile = this.tileCache.get(key);
+
+                if (!tile) {
+                    this._loadTile(key, url).catch(e => { }); // Start loading if not cached
+                    // Draw background while loading
+                    ctx.fillStyle = this.options.background || '#ffffff';
+                    ctx.fillRect((X - ct.x) * ts, (Y - ct.y) * ts, ts, ts);
+                    continue;
+                }
+
+                if (tile.loaded && tile.img) {
+                    try {
+                        ctx.drawImage(tile.img, (X - ct.x) * ts, (Y - ct.y) * ts, ts, ts);
+                        this._recordTileAccess(key); // Update access time
+                        // Check TTL and reload if necessary
+                        if (tile.loadedAt && Date.now() - tile.loadedAt > TILE_TTL) {
+                            this._reloadTile(key, url);
+                        }
+                    } catch (e) {
+                        console.warn(`[Atlas] Error drawing tile ${key}:`, e);
+                    }
+                } else {
+                    // Still loading or failed, draw background
+                    ctx.fillStyle = this.options.background || '#ffffff';
+                    ctx.fillRect((X - ct.x) * ts, (Y - ct.y) * ts, ts, ts);
+                }
+            }
+
+            ctx.restore();
+
+            // Post-render tasks
+            this._evictCache();
+            this._preloadAdjacentTiles();
+
+            this._lastRenderedState = { center: { ...this._map.center }, zoom: this._map.zoom, bearing: this._map.bearing };
+        }
+
+        onAdd() {
+            this.fire('add');
+        }
+
+        onRemove() {
+            // Abort all ongoing requests
+            for (const [key, controller] of this.loadingControllers) {
+                controller.abort();
+            }
+            this.loadingTiles.clear();
+            this.loadingControllers.clear();
+            this._loadingPromises.clear();
+            this.tileCache.clear();
+            this.fire('remove');
+        }
+
+        getAttribution() { return this.options.attribution; }
+        getBackground() { return this.options.background; }
+        getMinZoom() { return this.options.minZoom; }
+        getMaxZoom() { return this.options.maxZoom; }
+
+        clearCache() {
+            this.tileCache.clear();
+            this.loadingTiles.clear();
+            for (const controller of this.loadingControllers.values()) {
+                controller.abort();
+            }
+            this.loadingControllers.clear();
+            this._loadingPromises.clear();
+            if (this._map) { this._map.render(); }
+            return this;
+        }
+    }
+
+    // --- GeoJSON Layer Class ---
+
+    class GeoJSONLayer extends Layer {
+        constructor(geojson, options = {}) {
+            super(options);
+            this._geojson = this._normalizeGeoJSON(geojson);
+            this._features = [];
+            this._featureCache = new Map();
+            this._spatialIndex = new SpatialIndex();
+            this._visibleFeatures = [];
+            this._lastViewport = null;
+            this._lastRenderState = { zoom: null, bearing: null, center: null };
+
+            this.options = {
+                style: options.style || { color: '#3388ff', weight: 3, opacity: 1, fillColor: '#3388ff', fillOpacity: 0.2, radius: 5 },
+                interactive: options.interactive !== false,
+                onEachFeature: options.onEachFeature || null,
+                filter: options.filter || null,
+                ...options
+            };
+
+            this._onMouseMove = this._onMouseMove.bind(this);
+            this._onMouseOut = this._onMouseOut.bind(this);
+            this._onClick = this._onClick.bind(this);
+        }
+
+        _normalizeGeoJSON(input) {
+            if (Array.isArray(input)) {
+                return { type: 'FeatureCollection', features: input.map(f => f.type === 'Feature' ? f : { type: 'Feature', geometry: f, properties: {} }) };
+            }
+            if (input.type === 'FeatureCollection') { return input; }
+            if (input.type === 'Feature') { return { type: 'FeatureCollection', features: [input] }; }
+            return { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: input, properties: {} }] };
+        }
+
+        _latLngToScreenPoint(coord) {
+            if (!this._map) { return { x: 0, y: 0 }; }
+            const [lon, lat] = coord;
+            return this._map.latLngToContainerPoint({ lat, lon });
+        }
+
+        _getFeatureStyle(feature) {
+            if (typeof this.options.style === 'function') { return this.options.style(feature); }
+            return this.options.style;
+        }
+
+        _processFeature(feature) {
+            const cacheKey = feature.id || JSON.stringify(feature.geometry);
+            if (this._featureCache.has(cacheKey)) { return this._featureCache.get(cacheKey); }
+
+            const geometry = feature.geometry;
+            const processed = {
+                type: geometry.type,
+                coordinates: null,
+                properties: feature.properties || {},
+                originalFeature: feature,
+                id: feature.id
+            };
+
+            try {
+                switch (geometry.type) {
+                    case 'Point':
+                        processed.coordinates = this._latLngToScreenPoint(geometry.coordinates);
+                        break;
+                    case 'MultiPoint':
+                        processed.coordinates = geometry.coordinates.map(coord => this._latLngToScreenPoint(coord));
+                        break;
+                    case 'LineString':
+                        processed.coordinates = geometry.coordinates.map(coord => this._latLngToScreenPoint(coord));
+                        break;
+                    case 'MultiLineString':
+                        processed.coordinates = geometry.coordinates.map(ring => ring.map(coord => this._latLngToScreenPoint(coord)));
+                        break;
+                    case 'Polygon':
+                        processed.coordinates = geometry.coordinates.map(ring => ring.map(coord => this._latLngToScreenPoint(coord)));
+                        break;
+                    case 'MultiPolygon':
+                        processed.coordinates = geometry.coordinates.map(polygon => polygon.map(ring => ring.map(coord => this._latLngToScreenPoint(coord))));
+                        break;
+                    default:
+                        console.warn('[Atlas] Unsupported geometry type:', geometry.type);
+                        return null;
+                }
+            } catch (e) {
+                console.error('[Atlas] Error processing feature:', e);
+                return null;
+            }
+
+            this._featureCache.set(cacheKey, processed);
+            return processed;
+        }
+
+        _renderPoint(ctx, feature, style) {
+            const { x, y } = feature.coordinates;
+            const radius = style.radius || 5;
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, TWO_PI);
+            if (style.fill !== false) {
+                ctx.fillStyle = style.fillColor || style.color || '#3388ff';
+                ctx.globalAlpha = style.fillOpacity !== undefined ? style.fillOpacity : 0.8;
+                ctx.fill();
+            }
+            if (style.stroke !== false) {
+                ctx.strokeStyle = style.color || '#3388ff';
+                ctx.lineWidth = style.weight || 2;
+                ctx.globalAlpha = style.opacity || 1;
+                ctx.stroke();
+            }
+            ctx.globalAlpha = 1; // Reset alpha
+        }
+
+        _renderMultiPoint(ctx, coords, style) {
+            for (const pt of coords) {
+                this._renderPoint(ctx, { coordinates: pt }, style);
+            }
+        }
+
+        _renderLineString(ctx, feature, style) {
+            const coords = feature.coordinates;
+            if (coords.length < 2) { return; }
+
+            ctx.beginPath();
+            ctx.moveTo(coords[0].x, coords[0].y);
+            for (let i = 1; i < coords.length; i++) {
+                ctx.lineTo(coords[i].x, coords[i].y);
+            }
+
+            ctx.strokeStyle = style.color || '#3388ff';
+            ctx.lineWidth = style.weight || 3;
+            ctx.lineCap = style.lineCap || 'round';
+            ctx.lineJoin = style.lineJoin || 'round';
+            ctx.globalAlpha = style.opacity || 1;
+            ctx.stroke();
+            ctx.globalAlpha = 1; // Reset alpha
+        }
+
+        _renderMultiLineString(ctx, coords, style) {
+            for (const line of coords) {
+                this._renderLineString(ctx, { coordinates: line }, style);
+            }
+        }
+
+        _renderPolygon(ctx, feature, style) {
+            const rings = feature.coordinates;
+            if (rings.length === 0) { return; }
+
+            ctx.beginPath();
+            for (let ringIdx = 0; ringIdx < rings.length; ringIdx++) {
+                const ring = rings[ringIdx];
+                if (ring.length < 3) { continue; }
+                if (ringIdx === 0) {
+                    ctx.moveTo(ring[0].x, ring[0].y);
+                    for (let i = 1; i < ring.length; i++) {
+                        ctx.lineTo(ring[i].x, ring[i].y);
+                    }
+                    ctx.closePath();
+                } else {
+                    ctx.moveTo(ring[0].x, ring[0].y);
+                    for (let i = 1; i < ring.length; i++) {
+                        ctx.lineTo(ring[i].x, ring[i].y);
+                    }
+                    ctx.closePath();
+                }
+            }
+
+            if (style.fill !== false) {
+                ctx.fillStyle = style.fillColor || style.color || '#3388ff';
+                ctx.globalAlpha = style.fillOpacity !== undefined ? style.fillOpacity : 0.2;
+                ctx.fill();
+                ctx.globalAlpha = 1; // Reset alpha
+            }
+            if (style.stroke !== false) {
+                ctx.strokeStyle = style.color || '#3388ff';
+                ctx.lineWidth = style.weight || 3;
+                ctx.lineCap = style.lineCap || 'round';
+                ctx.lineJoin = style.lineJoin || 'round';
+                ctx.globalAlpha = style.opacity || 1;
+                ctx.stroke();
+                ctx.globalAlpha = 1; // Reset alpha
+            }
+        }
+
+        _renderMultiPolygon(ctx, coords, style) {
+            for (const polygon of coords) {
+                this._renderPolygon(ctx, { coordinates: polygon }, style);
+            }
+        }
+
+        _hitDetect(x, y) {
+            // Iterate features in reverse order (top to bottom)
+            const features = Array.from(this._featureCache.values()).reverse();
+            for (const processed of features) {
+                const style = this._getFeatureStyle(processed.originalFeature);
+                const tolerance = (style.weight || 3) / 2 + 3; // Add tolerance for line/point detection
+
+                switch (processed.type) {
+                    case 'Point':
+                        const dist = distance(x, y, processed.coordinates.x, processed.coordinates.y);
+                        if (dist <= (style.radius || 5) + tolerance) { return processed.originalFeature; }
+                        break;
+                    case 'MultiPoint':
+                        for (const pt of processed.coordinates) {
+                            const dist = distance(x, y, pt.x, pt.y);
+                            if (dist <= (style.radius || 5) + tolerance) { return processed.originalFeature; }
+                        }
+                        break;
+                    case 'Polygon':
+                        if (processed.coordinates.length > 0 && pointInPolygon(x, y, processed.coordinates[0])) { return processed.originalFeature; }
+                        break;
+                    case 'MultiPolygon':
+                        for (const polygon of processed.coordinates) {
+                            if (polygon.length > 0 && pointInPolygon(x, y, polygon[0])) { return processed.originalFeature; }
+                        }
+                        break;
+                    case 'LineString':
+                        for (let i = 0; i < processed.coordinates.length - 1; i++) {
+                            const p1 = processed.coordinates[i];
+                            const p2 = processed.coordinates[i + 1];
+                            const dist = this._distanceToLineSegment(x, y, p1.x, p1.y, p2.x, p2.y);
+                            if (dist <= tolerance) { return processed.originalFeature; }
+                        }
+                        break;
+                    case 'MultiLineString':
+                        for (const line of processed.coordinates) {
+                            for (let i = 0; i < line.length - 1; i++) {
+                                const p1 = line[i];
+                                const p2 = line[i + 1];
+                                const dist = this._distanceToLineSegment(x, y, p1.x, p1.y, p2.x, p2.y);
+                                if (dist <= tolerance) { return processed.originalFeature; }
+                            }
+                        }
+                        break;
+                }
+            }
+            return null;
+        }
+
+        _distanceToLineSegment(px, py, x1, y1, x2, y2) {
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            const len2 = dx * dx + dy * dy;
+            if (len2 === 0) { return distance(px, py, x1, y1); }
+
+            let t = ((px - x1) * dx + (py - y1) * dy) / len2;
+            t = Math.max(0, Math.min(1, t));
+            const closestX = x1 + t * dx;
+            const closestY = y1 + t * dy;
+            return distance(px, py, closestX, closestY);
+        }
+
+        _onMouseMove(e) {
+            if (!this._map) { return; }
+            const rect = this._map.canvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) * this._map.dpr;
+            const y = (e.clientY - rect.top) * this._map.dpr;
+            const feature = this._hitDetect(x, y);
+            if (feature) {
+                this._map.canvas.style.cursor = 'pointer';
+                this.fire('mousemove', { originalEvent: e, feature });
+            } else {
+                this._map.canvas.style.cursor = this._map.isDragging ? 'grabbing' : 'grab';
+                this.fire('mouseout', { originalEvent: e });
+            }
+        }
+
+        _onMouseOut(e) {
+            this._map.canvas.style.cursor = this._map.isDragging ? 'grabbing' : 'grab';
+            this.fire('mouseout', { originalEvent: e });
+        }
+
+        _onClick(e) {
+            if (!this._map) { return; }
+            const rect = this._map.canvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) * this._map.dpr;
+            const y = (e.clientY - rect.top) * this._map.dpr;
+            const feature = this._hitDetect(x, y);
+            if (feature) { this.fire('click', { originalEvent: e, feature }); }
+        }
+
+        _buildSpatialIndex() {
+            this._spatialIndex.clear();
+            for (let i = 0; i < this._features.length; i++) {
+                const feature = this._features[i];
+                const bounds = this._getFeatureBounds(feature);
+                if (bounds) {
+                    this._spatialIndex.insert({
+                        minX: bounds.minLon,
+                        minY: bounds.minLat,
+                        maxX: bounds.maxLon,
+                        maxY: bounds.maxLat,
+                        data: i // Store index for reference
+                    });
+                }
+            }
+        }
+
+        _getFeatureBounds(feature) {
+            const geometry = feature.geometry;
+            switch (geometry.type) {
+                case 'Point':
+                    const [lon, lat] = geometry.coordinates;
+                    return { minLon: lon, minLat: lat, maxLon: lon, maxLat: lat };
+                case 'Polygon': // Fallthrough for LineString, MultiPoint
+                case 'MultiPoint':
+                case 'LineString':
+                    const coords = geometry.type === 'Polygon' ? geometry.coordinates[0] : geometry.coordinates; // Simplified for bbox
+                    let minLon = Infinity, maxLon = -Infinity, minLat = Infinity, maxLat = -Infinity;
+                    for (const [lon, lat] of coords) {
+                        minLon = Math.min(minLon, lon);
+                        maxLon = Math.max(maxLon, lon);
+                        minLat = Math.min(minLat, lat);
+                        maxLat = Math.max(maxLat, lat);
+                    }
+                    return { minLon, minLat, maxLon, maxLat };
+                default:
+                    return null;
+            }
+        }
+
+        _getCulledFeatures(viewportBounds) {
+            if (!this._lastViewport || this._viewportChanged(viewportBounds, this._lastViewport)) {
+                this._visibleFeatures = this._spatialIndex.search(viewportBounds);
+                this._lastViewport = viewportBounds;
+            }
+            return this._visibleFeatures;
+        }
+
+        _viewportChanged(bounds1, bounds2) {
+            if (!bounds2) { return true; }
+            const threshold = 0.1; // Adjust as needed
+            const changed = Math.abs(bounds1.minLon - bounds2.minLon) > threshold ||
+                Math.abs(bounds1.maxLon - bounds2.maxLon) > threshold ||
+                Math.abs(bounds1.minLat - bounds2.minLat) > threshold ||
+                Math.abs(bounds1.maxLat - bounds2.maxLat) > threshold;
+            return changed;
+        }
+
+        onAdd() {
+            this._features = this._geojson.features || [];
+            this._buildSpatialIndex();
+            if (this.options.interactive) {
+                this._map.canvas.addEventListener('mousemove', this._onMouseMove);
+                this._map.canvas.addEventListener('mouseout', this._onMouseOut);
+                this._map.canvas.addEventListener('click', this._onClick);
+            }
+            this.fire('add');
+        }
+
+        onRemove() {
+            if (this.options.interactive) {
+                this._map.canvas.removeEventListener('mousemove', this._onMouseMove);
+                this._map.canvas.removeEventListener('mouseout', this._onMouseOut);
+                this._map.canvas.removeEventListener('click', this._onClick);
+            }
+            this._featureCache.clear();
+            this._spatialIndex.clear();
+            this.fire('remove');
+        }
+
+        render() {
+            if (!this._map) { return; }
+            if (!this._spatialIndex.size()) { this._buildSpatialIndex(); } // Rebuild if empty
+
+            const w = this._map.canvas.width / this._map.dpr;
+            const h = this._map.canvas.height / this._map.dpr;
+
+            // Calculate viewport bounds in lat/lon
+            const corners = [
+                this._map.screenToLatLon(0, 0),
+                this._map.screenToLatLon(w, 0),
+                this._map.screenToLatLon(w, h),
+                this._map.screenToLatLon(0, h)
+            ];
+            const viewportBounds = {
+                minLon: Math.min(...corners.map(c => c.lon)),
+                maxLon: Math.max(...corners.map(c => c.lon)),
+                minLat: Math.min(...corners.map(c => c.lat)),
+                maxLat: Math.max(...corners.map(c => c.lat))
+            };
+
+            const culledIndices = this._getCulledFeatures(viewportBounds);
+            const ctx = this._map.ctx;
+
+            for (const featureIndex of culledIndices) {
+                const feature = this._features[featureIndex];
+                if (this.options.filter && !this.options.filter(feature)) { continue; }
+
+                const processed = this._processFeature(feature);
+                if (!processed) { continue; }
+
+                const style = this._getFeatureStyle(feature);
+                try {
+                    this._renderGeometry(ctx, processed, style);
+                } catch (e) {
+                    console.warn(`[Atlas] Error rendering feature:`, e);
+                }
+            }
+        }
+
+        _renderGeometry(ctx, processed, style) {
+            switch (processed.type) {
+                case 'Point': this._renderPoint(ctx, processed, style); break;
+                case 'MultiPoint': this._renderMultiPoint(ctx, processed.coordinates, style); break;
+                case 'LineString': this._renderLineString(ctx, processed, style); break;
+                case 'MultiLineString': this._renderMultiLineString(ctx, processed.coordinates, style); break;
+                case 'Polygon': this._renderPolygon(ctx, processed, style); break;
+                case 'MultiPolygon': this._renderMultiPolygon(ctx, processed.coordinates, style); break;
+            }
+        }
+
+        setData(geojson) {
+            this._geojson = this._normalizeGeoJSON(geojson);
+            this._features = this._geojson.features || [];
+            this._featureCache.clear();
+            this._spatialIndex.clear(); // Rebuild index
+            if (this._map) { this._map.render(); }
+            return this;
+        }
+
+        getData() { return this._geojson; }
+        getFeatures() { return this._features; }
+    }
+
+    // --- Control Classes ---
+
+    class Control extends EventEmitter {
+        constructor(options = {}) {
+            super();
+            this.options = { position: options.position || 'top-left', ...options };
+            this._map = null;
+            this._container = null;
+        }
+
+        onAdd(map) {
+            return document.createElement('div');
+        }
+
+        onRemove() { }
+
+        addTo(map) {
+            this.remove();
+            this._map = map;
+            this._container = this.onAdd(map);
+            if (this._container) {
+                this._container.controlInstance = this; // Reference back to control instance
+                this._addToControlCorner();
+            }
+            return this;
+        }
+
+        remove() {
+            if (!this._map) { return this; }
+            this.onRemove();
+            if (this._container && this._container.parentNode) {
+                this._container.parentNode.removeChild(this._container);
+            }
+            if (this._map) { this._map.removeControl(this); }
+            this._map = null;
+            this._container = null;
+            return this;
+        }
+
+        getContainer() { return this._container; }
+
+        _addToControlCorner() {
+            if (!this._map || !this._container) { return; }
+            const position = this.options.position;
+            let cornerContainer = this._map._controlCorners[position];
+            if (!cornerContainer) {
+                cornerContainer = document.createElement('div');
+                cornerContainer.className = `atlas-control-container atlas-control-${position}`;
+                const isVertical = position.includes('top') || position.includes('bottom');
+                if (isVertical) { cornerContainer.classList.add('atlas-control-vertical'); }
+                else { cornerContainer.classList.add('atlas-control-horizontal'); }
+                this._map.container.appendChild(cornerContainer);
+                this._map._controlCorners[position] = cornerContainer;
+            }
+            cornerContainer.appendChild(this._container);
+        }
+
+        getPosition() { return this.options.position; }
+
+        setPosition(position) {
+            this.options.position = position;
+            if (this._map && this._container) {
+                if (this._container.parentNode) { this._container.parentNode.removeChild(this._container); }
+                this._addToControlCorner();
+            }
+            return this;
+        }
+    }
+
+    class ZoomControl extends Control {
+        constructor(options = {}) {
+            super(options);
+            this.options = { ...this.options, zoomInTitle: options.zoomInTitle || 'Zoom in', zoomOutTitle: options.zoomOutTitle || 'Zoom out' };
+        }
+
+        onAdd(map) {
+            const container = document.createElement('div');
+            container.className = 'atlas-zoom-control atlas-control-vertical';
+
+            const zoomInBtn = document.createElement('button');
+            zoomInBtn.className = 'control-btn';
+            zoomInBtn.title = this.options.zoomInTitle;
+            zoomInBtn.setAttribute('aria-label', this.options.zoomInTitle);
+            zoomInBtn.textContent = '+';
+            zoomInBtn.onclick = () => {
+                if (map) {
+                    map.stopAnimations();
+                    map.setZoom(map.getZoom() + 1);
+                }
+            };
+
+            const zoomOutBtn = document.createElement('button');
+            zoomOutBtn.className = 'control-btn';
+            zoomOutBtn.title = this.options.zoomOutTitle;
+            zoomOutBtn.setAttribute('aria-label', this.options.zoomOutTitle);
+            zoomOutBtn.textContent = '−';
+            zoomOutBtn.onclick = () => {
+                if (map) {
+                    map.stopAnimations();
+                    map.setZoom(map.getZoom() - 1);
+                }
+            };
+
+            container.appendChild(zoomInBtn);
+            container.appendChild(zoomOutBtn);
+
+            this._zoomInBtn = zoomInBtn;
+            this._zoomOutBtn = zoomOutBtn;
+
+            map.on('zoom', () => this._updateZoomButtons(map));
+            map.on('baselayerchange', () => this._updateZoomButtons(map));
+            this._updateZoomButtons(map); // Initial state
+
+            return container;
+        }
+
+        onRemove() {
+            if (this._map) {
+                this._map.off('zoom', () => this._updateZoomButtons(this._map));
+                this._map.off('baselayerchange', () => this._updateZoomButtons(this._map));
+            }
+        }
+
+        _updateZoomButtons(map) {
+            if (!map || !this._zoomInBtn || !this._zoomOutBtn) { return; }
+            const minZoom = map.getBaseLayer() ? map.getBaseLayer().getMinZoom() : 0;
+            const maxZoom = map.getBaseLayer() ? map.getBaseLayer().getMaxZoom() : 18;
+            const currentZoom = map.getZoom();
+
+            this._zoomInBtn.disabled = currentZoom >= maxZoom;
+            this._zoomOutBtn.disabled = currentZoom <= minZoom;
+        }
+    }
+
+    class LayerControl extends Control {
+        constructor(options = {}) {
+            super(options);
+            this.options = { ...this.options, title: options.title || 'Toggle layer' };
+        }
+
+        onAdd(map) {
+            const container = document.createElement('div');
+            container.className = 'atlas-layer-control';
+
+            const toggleBtn = document.createElement('button');
+            toggleBtn.className = 'control-btn';
+            toggleBtn.title = this.options.title;
+            toggleBtn.setAttribute('aria-label', this.options.title);
+            toggleBtn.innerHTML = '🌐';
+            toggleBtn.onclick = () => {
+                if (map) {
+                    const current = map.getBaseLayer();
+                    let newLayerKey = 'OSM';
+                    if (current && current.urlTemplate) {
+                        if (current.urlTemplate.includes('openstreetmap')) { newLayerKey = 'ESRI'; }
+                        else if (current.urlTemplate.includes('World_Imagery')) { newLayerKey = 'ESRI_TOPO'; }
+                        // else default to OSM
+                    }
+                    const newLayer = createTileLayerFromConfig(newLayerKey);
+                    map.setBaseLayer(newLayer);
+                }
+            };
+
+            container.appendChild(toggleBtn);
+            this._toggleBtn = toggleBtn;
+
+            return container;
+        }
+
+        onRemove() { }
+    }
+
+    class FullscreenControl extends Control {
+        constructor(options = {}) {
+            super(options);
+            this.options = { ...this.options, title: options.title || 'Toggle fullscreen', titleExit: options.titleExit || 'Exit fullscreen' };
+            this._updateButtonHandler = this._updateButton.bind(this);
+        }
+
+        onAdd(map) {
+            const container = document.createElement('div');
+            container.className = 'atlas-fullscreen-control';
+
+            const fullscreenBtn = document.createElement('button');
+            fullscreenBtn.className = 'control-btn';
+            fullscreenBtn.title = this.options.title;
+            fullscreenBtn.setAttribute('aria-label', this.options.title);
+            fullscreenBtn.innerHTML = '&#x26F6;'; // Unicode symbol for fullscreen
+
+            const toggleFullscreen = () => {
+                if (!document.fullscreenElement) {
+                    map.container.requestFullscreen().catch(err => {
+                        console.warn(`[Atlas] Error enabling fullscreen: ${err.message}`);
+                    });
+                } else {
+                    document.exitFullscreen().catch(err => {
+                        console.warn(`[Atlas] Error exiting fullscreen: ${err.message}`);
+                    });
+                }
+            };
+
+            fullscreenBtn.onclick = toggleFullscreen;
+            document.addEventListener('fullscreenchange', this._updateButtonHandler);
+
+            container.appendChild(fullscreenBtn);
+            this._fullscreenBtn = fullscreenBtn;
+            this._updateButton(); // Initial state
+
+            return container;
+        }
+
+        onRemove() {
+            document.removeEventListener('fullscreenchange', this._updateButtonHandler);
+        }
+
+        _updateButton() {
+            if (!this._fullscreenBtn || !this._map) { return; }
+            if (document.fullscreenElement === this._map.container) {
+                this._fullscreenBtn.innerHTML = '&#x2716;'; // X symbol for exit
+                this._fullscreenBtn.title = this.options.titleExit;
+            } else {
+                this._fullscreenBtn.innerHTML = '&#x26F6;'; // Fullscreen symbol
+                this._fullscreenBtn.title = this.options.title;
+            }
+        }
+    }
+
+    class AttributionControl extends Control {
+        constructor(options = {}) {
+            super({ position: 'bottom-left', ...options });
+            this.options = { ...this.options, prefix: options.prefix || '' };
+        }
+
+        onAdd(map) {
+            const container = document.createElement('div');
+            container.id = 'attribution';
+            this._container = container;
+
+            map.on('moveend', () => this._update(map));
+            map.on('baselayerchange', () => this._update(map));
+            this._update(map); // Initial update
+
+            return container;
+        }
+
+        onRemove() {
+            if (this._map) {
+                this._map.off('moveend', () => this._update(this._map));
+                this._map.off('baselayerchange', () => this._update(this._map));
+            }
+        }
+
+        _update(map) {
+            if (!map || !this._container) { return; }
+            const attributions = new Set();
+            map.getLayers().forEach(layer => {
+                if (typeof layer.getAttribution === 'function') {
+                    const attr = layer.getAttribution();
+                    if (attr) { attributions.add(attr); }
+                }
+            });
+            // Add library attribution
+            attributions.add('<a href="https://github.com/yourusername/atlasjs" target="_blank" rel="noopener noreferrer">Atlas.js</a>');
+            this._container.innerHTML = Array.from(attributions).join(' | ');
+        }
+    }
+
+    class CompassControl extends Control {
+        constructor(options = {}) {
+            super({ position: 'top-right', ...options });
+            this.options = { ...this.options, title: options.title || 'Reset North' };
+            this._onMouseEnter = this._onMouseEnter.bind(this);
+            this._onMouseLeave = this._onMouseLeave.bind(this);
+            this._onMouseDown = this._onMouseDown.bind(this);
+            this._onMouseUp = this._onMouseUp.bind(this);
+            this._updateCompass = this._updateCompass.bind(this);
+        }
+
+        onAdd(map) {
+            const container = document.createElement('div');
+            container.className = 'atlas-compass-control';
+
+            const compassBtn = document.createElement('button');
+            compassBtn.id = 'compass';
+            compassBtn.className = 'control-btn';
+            compassBtn.title = this.options.title;
+            compassBtn.setAttribute('aria-label', this.options.title);
+            compassBtn.innerHTML = 'N';
+            compassBtn.style.transition = 'transform 0.2s ease-out, opacity 0.2s';
+            compassBtn.style.opacity = '0';
+            compassBtn.style.pointerEvents = 'none';
+            compassBtn.onclick = () => {
+                if (map) { map.flyTo({ bearing: 0, duration: SNAP_DURATION }); }
+            };
+
+            compassBtn.addEventListener('mouseenter', this._onMouseEnter);
+            compassBtn.addEventListener('mouseleave', this._onMouseLeave);
+            compassBtn.addEventListener('mousedown', this._onMouseDown);
+            compassBtn.addEventListener('mouseup', this._onMouseUp);
+
+            container.appendChild(compassBtn);
+            this._compassBtn = compassBtn;
+
+            map.on('rotate', this._updateCompass);
+            map.on('moveend', this._updateCompass);
+            this._updateCompass(); // Initial state
+
+            return container;
+        }
+
+        onRemove() {
+            if (this._compassBtn) {
+                this._compassBtn.removeEventListener('mouseenter', this._onMouseEnter);
+                this._compassBtn.removeEventListener('mouseleave', this._onMouseLeave);
+                this._compassBtn.removeEventListener('mousedown', this._onMouseDown);
+                this._compassBtn.removeEventListener('mouseup', this._onMouseUp);
+            }
+            if (this._map) {
+                this._map.off('rotate', this._updateCompass);
+                this._map.off('moveend', this._updateCompass);
+            }
+        }
+
+        _onMouseEnter() {
+            if (this._compassBtn) { this._compassBtn.style.background = "rgba(240, 240, 240, 0.95)"; }
+        }
+
+        _onMouseLeave() {
+            if (this._compassBtn) { this._compassBtn.style.background = "rgba(255, 255, 255, 0.9)"; }
+        }
+
+        _onMouseDown() {
+            if (this._compassBtn && this._map) {
+                const bearing = this._map.getBearing();
+                this._compassBtn.style.transform = `scale(0.9) rotate(${-bearing * RAD2DEG}deg)`;
+            }
+        }
+
+        _onMouseUp() {
+            if (this._compassBtn && this._map) {
+                const bearing = this._map.getBearing();
+                this._compassBtn.style.transform = `scale(1) rotate(${-bearing * RAD2DEG}deg)`;
+            }
+        }
+
+        _updateCompass() {
+            if (!this._compassBtn || !this._map) { return; }
+            const bearing = this._map.getBearing();
+            const visible = Math.abs(bearing) > 0.01; // Show if bearing is not close to 0
+            this._compassBtn.style.opacity = visible ? '1' : '0';
+            this._compassBtn.style.pointerEvents = visible ? 'auto' : 'none';
+            this._compassBtn.style.transform = `scale(1) rotate(${-bearing * RAD2DEG}deg)`;
+        }
+    }
+
+    // --- Bounds Class ---
+
+    class Bounds {
+        constructor(southWest, northEast) {
+            this.sw = LatLng.from(southWest);
+            this.ne = LatLng.from(northEast);
+        }
+
+        get center() {
+            return new LatLng((this.sw.lat + this.ne.lat) / 2, (this.sw.lon + this.ne.lon) / 2);
+        }
+
+        contains(latlng) {
+            latlng = LatLng.from(latlng);
+            return latlng.lat >= this.sw.lat && latlng.lat <= this.ne.lat &&
+                latlng.lon >= this.sw.lon && latlng.lon <= this.ne.lon;
+        }
+
+        intersects(other) {
+            return !(this.ne.lat < other.sw.lat || this.sw.lat > other.ne.lat || this.ne.lon < other.sw.lon || this.sw.lon > other.ne.lon);
+        }
+    }
+
+    // --- Plugin System ---
+
+    class PluginSystem {
+        constructor() {
+            this.plugins = new Map();
+        }
+
+        register(name, plugin) {
+            if (this.plugins.has(name)) {
+                console.warn(`Plugin '${name}' already registered`);
+                return;
+            }
+            if (typeof plugin.init !== 'function') { throw new Error('Plugin must have init method'); }
+            this.plugins.set(name, plugin);
+        }
+
+        unregister(name) {
+            const plugin = this.plugins.get(name);
+            if (plugin?.destroy) { plugin.destroy(); }
+            this.plugins.delete(name);
+        }
+
+        initializePlugins(atlasInstance) {
+            for (const [name, plugin] of this.plugins) {
+                try {
+                    plugin.init(atlasInstance);
+                } catch (error) {
+                    console.error(`Error initializing plugin '${name}':`, error);
+                }
+            }
+        }
+    }
+
+    // --- Base Handler Class ---
+
+    class Handler {
+        constructor(map) {
+            this._map = map;
+            this._enabled = false;
+        }
+
+        enable() {
+            if (this._enabled) { return this; }
+            this._enabled = true;
+            this._addEvents();
+            return this;
+        }
+
+        disable() {
+            if (!this._enabled) { return this; }
+            this._enabled = false;
+            this._removeEvents();
+            return this;
+        }
+
+        toggle() {
+            return this._enabled ? this.disable() : this.enable();
+        }
+
+        isEnabled() {
+            return this._enabled;
+        }
+
+        _addEvents() { }
+        _removeEvents() { }
+        destroy() {
+            this.disable();
+        }
+    }
+
+    // --- Keyboard Handler ---
+
+    class KeyboardPanHandler extends Handler {
+        constructor(map) {
+            super(map);
+            this._onKeyDown = this._onKeyDown.bind(this);
+            this.PAN_AMOUNT = 100; // pixels
+        }
+
+        _addEvents() {
+            window.addEventListener('keydown', this._onKeyDown);
+        }
+
+        _removeEvents() {
+            window.removeEventListener('keydown', this._onKeyDown);
+        }
+
+        _onKeyDown(e) {
+            if (!this._map.isFocused()) { return; }
+
+            let panX = 0;
+            let panY = 0;
+            const w = this._map.canvas.width / this._map.dpr;
+            const h = this._map.canvas.height / this._map.dpr;
+
+            switch (e.key) {
+                case "ArrowUp": panY = -this.PAN_AMOUNT; break;
+                case "ArrowDown": panY = this.PAN_AMOUNT; break;
+                case "ArrowLeft": panX = -this.PAN_AMOUNT; break;
+                case "ArrowRight": panX = this.PAN_AMOUNT; break;
+                case "n": this._map.flyTo({ bearing: 0, duration: SNAP_DURATION }); e.preventDefault(); return;
+                case "r": this._map.setBearing(this._map.getBearing() + DEG2RAD * 15); e.preventDefault(); return;
+                case "l": this._map.setBearing(this._map.getBearing() - DEG2RAD * 15); e.preventDefault(); return;
+                case "s": this._cycleBaseLayer(); e.preventDefault(); return;
+                case "+":
+                case "=": this._map.smoothZoomAt(w / 2, h / 2, 1); e.preventDefault(); return;
+                case "-": this._map.smoothZoomAt(w / 2, h / 2, -1); e.preventDefault(); return;
+                default: return;
+            }
+
+            if (panX !== 0 || panY !== 0) {
+                e.preventDefault();
+                this._map.stopAnimations();
+                const newCenter = this._map.screenToLatLon(w / 2 - panX, h / 2 - panY);
+                this._map.setCenter(newCenter);
+                this._map.render();
+            }
+        }
+
+        _cycleBaseLayer() {
+            const current = this._map.getBaseLayer();
+            let nextLayerKey = 'OSM';
+            if (current && current.urlTemplate) {
+                if (current.urlTemplate.includes('openstreetmap')) { nextLayerKey = 'ESRI'; }
+                else if (current.urlTemplate.includes('World_Imagery')) { nextLayerKey = 'ESRI_TOPO'; }
+                // else default to OSM
+            }
+            const newLayer = createTileLayerFromConfig(nextLayerKey);
+            this._map.setBaseLayer(newLayer);
+        }
+    }
+
+    // --- Drag Pan Handler ---
+
+    class DragPanHandler extends Handler {
+        constructor(map) {
+            super(map);
+            this._isDragging = false;
+            this._dragStart = null;
+            this._moveSamples = [];
+            this._activeListeners = new Set();
+
+            this._onMouseDown = this._onMouseDown.bind(this);
+            this._onMouseMove = this._onMouseMove.bind(this);
+            this._onMouseUp = this._onMouseUp.bind(this);
+            this._onTouchStart = this._onTouchStart.bind(this);
+            this._onTouchMove = this._onTouchMove.bind(this);
+            this._onTouchEnd = this._onTouchEnd.bind(this);
+        }
+
+        _addListener(target, event, handler, options = {}) {
+            target.addEventListener(event, handler, options);
+            this._activeListeners.add({ target, event, handler, options });
+        }
+
+        _removeListener(target, event, handler, options = {}) {
+            target.removeEventListener(event, handler, options);
+            for (const listener of this._activeListeners) {
+                if (listener.target === target && listener.event === event && listener.handler === handler) {
+                    this._activeListeners.delete(listener);
+                    break;
+                }
+            }
+        }
+
+        _addEvents() {
+            this._addListener(this._map.canvas, 'mousedown', this._onMouseDown);
+            this._addListener(this._map.canvas, 'touchstart', this._onTouchStart, { passive: false });
+        }
+
+        _removeEvents() {
+            this._removeListener(this._map.canvas, 'mousedown', this._onMouseDown);
+            this._removeListener(this._map.canvas, 'touchstart', this._onTouchStart, { passive: false });
+        }
+
+        _onMouseDown(e) {
+            if (e.button !== 0 || e.target !== this._map.canvas) { return; }
+            this._startDrag(e.clientX, e.clientY);
+            this._addListener(document, 'mousemove', this._onMouseMove);
+            this._addListener(document, 'mouseup', this._onMouseUp);
+        }
+
+        _onMouseMove(e) {
+            if (!this._isDragging) { return; }
+            e.preventDefault();
+
+            const dx = e.clientX - this._dragStart.x;
+            const dy = e.clientY - this._dragStart.y;
+            if (dx === 0 && dy === 0) { return; } // Avoid unnecessary updates
+
+            const w = this._map.canvas.width / this._map.dpr;
+            const h = this._map.canvas.height / this._map.dpr;
+            this._map.center = this._map.screenToLatLon(w / 2 - dx, h / 2 - dy, this._map.zoom, this._map.bearing, this._dragStart.center);
+
+            this._pushVelocitySample(e.clientX, e.clientY);
+            this._map.render();
+        }
+
+        _onMouseUp() {
+            this._removeListener(document, 'mousemove', this._onMouseMove);
+            this._removeListener(document, 'mouseup', this._onMouseUp);
+            this._endDrag();
+        }
+
+        _onTouchStart(e) {
+            if (e.touches.length !== 1) { return; }
+            e.preventDefault();
+            this._startDrag(e.touches[0].clientX, e.touches[0].clientY);
+            this._addListener(document, 'touchmove', this._onTouchMove, { passive: false });
+            this._addListener(document, 'touchend', this._onTouchEnd);
+            this._addListener(document, 'touchcancel', this._onTouchEnd);
+        }
+
+        _onTouchMove(e) {
+            if (!this._isDragging || e.touches.length !== 1) { return; }
+            e.preventDefault();
+
+            const dx = e.touches[0].clientX - this._dragStart.x;
+            const dy = e.touches[0].clientY - this._dragStart.y;
+            if (dx === 0 && dy === 0) { return; } // Avoid unnecessary updates
+
+            const w = this._map.canvas.width / this._map.dpr;
+            const h = this._map.canvas.height / this._map.dpr;
+            this._map.center = this._map.screenToLatLon(w / 2 - dx, h / 2 - dy, this._map.zoom, this._map.bearing, this._dragStart.center);
+
+            this._pushVelocitySample(e.touches[0].clientX, e.touches[0].clientY);
+            this._map.render();
+        }
+
+        _onTouchEnd() {
+            this._removeListener(document, 'touchmove', this._onTouchMove, { passive: false });
+            this._removeListener(document, 'touchend', this._onTouchEnd);
+            this._removeListener(document, 'touchcancel', this._onTouchEnd);
+            this._endDrag();
+        }
+
+        _startDrag(clientX, clientY) {
+            this._isDragging = true;
+            this._map.stopAnimations();
+            this._map.isDragging = true;
+            this._map.container.classList.add('dragging');
+            this._dragStart = { x: clientX, y: clientY, center: { ...this._map.center } };
+            this._moveSamples = [];
+            this._pushVelocitySample(clientX, clientY);
+            this._map.fire('movestart');
+        }
+
+        _endDrag() {
+            if (!this._isDragging) { return; }
+            this._isDragging = false;
+            this._map.isDragging = false;
+            this._map.container.classList.remove('dragging');
+            const { vx, vy } = this._computeVelocity();
+            if (Math.hypot(vx, vy) > INERTIA_STOP_SPEED) {
+                this._startInertia(vx, vy);
+            } else {
+                this._map.fire('moveend');
+            }
+        }
+
+        _pushVelocitySample(x, y) {
+            const t = performance.now();
+            this._moveSamples.push({ t, x, y });
+            const cutoff = t - VELOCITY_WINDOW_MS;
+            while (this._moveSamples.length && this._moveSamples[0].t < cutoff) {
+                this._moveSamples.shift();
+            }
+        }
+
+        _computeVelocity() {
+            if (this._moveSamples.length < 2) { return { vx: 0, vy: 0 }; }
+            const last = this._moveSamples[this._moveSamples.length - 1];
+            let i = this._moveSamples.length - 2;
+            while (i > 0 && last.t - this._moveSamples[i].t < VELOCITY_WINDOW_MS * 0.5) { i--; }
+            const ref = this._moveSamples[i];
+            const dt = Math.max(1, last.t - ref.t);
+            return { vx: (last.x - ref.x) / dt, vy: (last.y - ref.y) / dt };
+        }
+
+        _startInertia(vx, vy) {
+            let lastT = performance.now();
+            const step = () => {
+                const now = performance.now();
+                const dt = now - lastT;
+                lastT = now;
+
+                const dx = vx * dt;
+                const dy = vy * dt;
+
+                const w = this._map.canvas.width / this._map.dpr;
+                const h = this._map.canvas.height / this._map.dpr;
+                this._map.center = this._map.screenToLatLon(w / 2 - dx, h / 2 - dy);
+
+                const vmag = Math.hypot(vx, vy);
+                const newVmag = Math.max(0, vmag - INERTIA_DECEL * dt);
+                if (newVmag <= INERTIA_STOP_SPEED) {
+                    this._map.render();
+                    this._map._inertiaRAF = null;
+                    this._map.fire('moveend');
+                    return;
+                }
+                const scale = newVmag / (vmag || 1);
+                vx *= scale;
+                vy *= scale;
+
+                this._map.render();
+                this._map._inertiaRAF = requestAnimationFrame(step);
+            };
+            this._map._inertiaRAF = requestAnimationFrame(step);
+        }
+    }
+
+    // --- Scroll Zoom Handler ---
+
+    class ScrollZoomHandler extends Handler {
+        constructor(map) {
+            super(map);
+            this._onWheel = this._onWheel.bind(this);
+        }
+
+        _addEvents() {
+            this._map.container.addEventListener('wheel', this._onWheel, { passive: false });
+        }
+
+        _removeEvents() {
+            this._map.container.removeEventListener('wheel', this._onWheel);
+        }
+
+        _onWheel(e) {
+            e.preventDefault();
+            const rect = this._map.canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            const deltaZ = e.deltaY < 0 ? WHEEL_ZOOM_STEP : -WHEEL_ZOOM_STEP; // Positive for zoom in
+            this._map.smoothZoomAt(x, y, deltaZ);
+        }
+    }
+
+    // --- Double Click Zoom Handler ---
+
+    class DoubleClickZoomHandler extends Handler {
+        constructor(map) {
+            super(map);
+            this._onDoubleClick = this._onDoubleClick.bind(this);
+        }
+
+        _addEvents() {
+            this._map.canvas.addEventListener('dblclick', this._onDoubleClick);
+        }
+
+        _removeEvents() {
+            this._map.canvas.removeEventListener('dblclick', this._onDoubleClick);
+        }
+
+        _onDoubleClick(e) {
+            e.preventDefault();
+            const rect = this._map.canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            this._map.animateZoomRotateAbout(x, y, this._map.getZoom() + 1, this._map.getBearing(), TAP_ZOOM_DURATION);
+        }
+    }
+
+    // --- Touch Zoom/Rotate Handler ---
+
+    class TouchZoomRotateHandler extends Handler {
+        constructor(map) {
+            super(map);
+            this._isPinching = false;
+            this._pinchStartDist = 0;
+            this._pinchStartAngle = 0;
+            this._pinchStartZoom = map.getZoom();
+            this._pinchStartBearing = map.getBearing();
+            this._pinchStartTime = 0;
+            this._pinchLastCenter = null;
+            this._pinchAnchorLL = null;
+            this._pinchMoved = false;
+
+            this._onTouchStart = this._onTouchStart.bind(this);
+            this._onTouchMove = this._onTouchMove.bind(this);
+            this._onTouchEnd = this._onTouchEnd.bind(this);
+        }
+
+        _addEvents() {
+            this._map.canvas.addEventListener('touchstart', this._onTouchStart, { passive: false });
+        }
+
+        _removeEvents() {
+            this._map.canvas.removeEventListener('touchstart', this._onTouchStart);
+            this._removeMoveEvents();
+        }
+
+        _removeMoveEvents() {
+            document.removeEventListener('touchmove', this._onTouchMove, { passive: false });
+            document.removeEventListener('touchend', this._onTouchEnd);
+            document.removeEventListener('touchcancel', this._onTouchEnd);
+        }
+
+        _onTouchStart(e) {
+            if (e.touches.length < 2) { return; }
+            e.preventDefault();
+            this._startPinch(e);
+            document.addEventListener('touchmove', this._onTouchMove, { passive: false });
+            document.addEventListener('touchend', this._onTouchEnd);
+            document.addEventListener('touchcancel', this._onTouchEnd);
+        }
+
+        _startPinch(e) {
+            this._map.stopAnimations();
+            this._map.fire('movestart');
+
+            this._isPinching = true;
+            const t1 = e.touches[0];
+            const t2 = e.touches[1];
+            this._pinchStartDist = distance(t1.clientX, t1.clientY, t2.clientX, t2.clientY);
+            this._pinchStartAngle = Math.atan2(t2.clientY - t1.clientY, t2.clientX - t1.clientX);
+            this._pinchStartZoom = this._map.getZoom();
+            this._pinchStartBearing = this._map.getBearing();
+            this._pinchStartTime = performance.now();
+
+            const rect = this._map.canvas.getBoundingClientRect();
+            const x = (t1.clientX + t2.clientX) / 2 - rect.left;
+            const y = (t1.clientY + t2.clientY) / 2 - rect.top;
+            this._pinchLastCenter = { x, y };
+            this._pinchAnchorLL = this._map.screenToLatLon(x, y, this._map.getZoom(), this._map.getBearing(), this._map.getCenter());
+            this._pinchMoved = false;
+        }
+
+        _onTouchMove(e) {
+            if (!this._isPinching || e.touches.length < 2) { return; }
+            e.preventDefault();
+
+            const t1 = e.touches[0];
+            const t2 = e.touches[1];
+            const dist = distance(t1.clientX, t1.clientY, t2.clientX, t2.clientY);
+            const angle = Math.atan2(t2.clientY - t1.clientY, t2.clientX - t1.clientX);
+
+            const rect = this._map.canvas.getBoundingClientRect();
+            const x = (t1.clientX + t2.clientX) / 2 - rect.left;
+            const y = (t1.clientY + t2.clientY) / 2 - rect.top;
+
+            const targetZoom = this._pinchStartZoom + Math.log2(dist / Math.max(1, this._pinchStartDist));
+            const deltaAngle = normalizeAngle(angle - this._pinchStartAngle);
+            const targetBearing = normalizeAngle(this._pinchStartBearing + deltaAngle);
+
+            // Check if movement is significant enough to consider it a pinch/rotate action
+            if (!this._pinchMoved) {
+                const zoomChange = Math.abs(Math.log(dist / Math.max(1, this._pinchStartDist)));
+                const rotationChange = Math.abs(deltaAngle);
+                if (zoomChange > Math.log(1.05) || rotationChange > ROTATE_MOVE_THRESH_RAD) {
+                    this._pinchMoved = true;
+                }
+            }
+
+            this._map.applyZoomRotateAbout(x, y, targetZoom, targetBearing, this._pinchAnchorLL);
+            this._pinchLastCenter = { x, y };
+            this._map.render();
+        }
+
+        _onTouchEnd(e) {
+            if (!this._isPinching) { return; }
+
+            const dt = performance.now() - this._pinchStartTime;
+            // If touch ended quickly and didn't move much, treat as a two-finger tap (zoom out)
+            if (dt <= TWO_FINGER_TAP_MAX_DELAY && !this._pinchMoved) {
+                const x = this._pinchLastCenter ? this._pinchLastCenter.x : (this._map.canvas.width / this._map.dpr) / 2;
+                const y = this._pinchLastCenter ? this._pinchLastCenter.y : (this._map.canvas.height / this._map.dpr) / 2;
+                this._map.animateZoomRotateAbout(x, y, this._map.getZoom() - 1, this._map.getBearing(), TAP_ZOOM_DURATION);
+            } else {
+                this._map.fire('moveend');
+            }
+
+            this._isPinching = false;
+            this._removeMoveEvents();
+        }
+    }
+
+    // --- Main Atlas Map Class ---
+
+    class Atlas extends EventEmitter {
+        constructor(id, options = {}) {
+            super();
+            ConfigValidator.validate(options, ConfigValidator.schemas.atlasOptions);
+            Object.assign(CONFIG, options);
+
+            this.canvas = document.getElementById(id);
+            if (!this.canvas) { throw new Error(`[Atlas] Canvas element with id "${id}" not found`); }
+
+            const ctxRaw = this.canvas.getContext("2d", { willReadFrequently: true });
+            if (!ctxRaw) { throw new Error('[Atlas] Unable to get 2D context from canvas'); }
+            this.ctx = new RenderContext(ctxRaw);
+
+            this.container = this.canvas.parentElement;
+            if (!this.container) { throw new Error('[Atlas] Canvas has no parent element'); }
+            this.container.tabIndex = 0; // Make container focusable for keyboard events
+
+            this.center = new LatLng(clampLatitude(CONFIG.defaultCenter.lat), wrapLongitude(CONFIG.defaultCenter.lon));
+            this.zoom = CONFIG.defaultZoom;
+            this.bearing = 0;
+            this.isDragging = false;
+            this.dpr = window.devicePixelRatio || 1;
+
+            this.loadingEl = document.getElementById("loading");
+            this.loadingCountEl = document.getElementById("loading-count");
+
+            this._inertiaRAF = null;
+            this._zoomAnim = null;
+            this._flyAnim = null;
+            this._allRAFIds = new Set(); // Track all animation frame IDs
+            this._lastFrameTime = null;
+
+            this.performanceMonitor = new PerformanceMonitor();
+            this.errorBoundary = new ErrorBoundary('Atlas');
+
+            this._layers = [];
+            this._baseLayer = null;
+            this._controls = [];
+            this._controlCorners = {};
+            this._handlers = {};
+
+            this.projection = DEFAULT_PROJECTION;
+
+            this._onResize = ThrottleDebounce.throttle(this.resize.bind(this), 100);
+            this._draw = this._draw.bind(this);
+            this._scheduleRender = ThrottleDebounce.debounce(this._draw, 16.67); // Debounce render calls to ~60fps
+
+            this.plugins = new PluginSystem();
+
+            this.resize(); // Initial resize
+            window.addEventListener('resize', this._onResize);
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) { this._pauseAnimations(); }
+                else { this._resumeAnimations(); }
+            });
+
+            this._initializeHandlers();
+            this._initializeControls();
+            this._logUsageInfo();
+
+            this.render(); // Initial render
+            this.fire('load');
+        }
+
+        _initializeHandlers() {
+            this.addHandler('dragPan', DragPanHandler);
+            this.addHandler('scrollZoom', ScrollZoomHandler);
+            this.addHandler('doubleClickZoom', DoubleClickZoomHandler);
+            this.addHandler('touchZoomRotate', TouchZoomRotateHandler);
+            this.addHandler('keyboardPan', KeyboardPanHandler);
+        }
+
+        _initializeControls() {
+            this.addControl(new ZoomControl({ position: 'top-left' }));
+            this.addControl(new LayerControl({ position: 'top-left' }));
+            this.addControl(new FullscreenControl({ position: 'top-right' }));
+            this.addControl(new AttributionControl());
+            this.addControl(new CompassControl());
+        }
+
+        _logUsageInfo() {
+            console.info('%c[Atlas.js]%c Lightweight mapping library loaded', 'font-weight: bold; color: #0078A8;', 'color: #333;');
+            console.info('%cPlease comply with tile provider terms:%c\n- OpenStreetMap: https://operations.osmfoundation.org/policies/tiles/\n- Esri: https://www.esri.com/legal/terms/master-agreement', 'color: #e74c3c; font-weight: bold;', 'color: #333;');
+        }
+
+        addLayer(layer) {
+            if (!(layer instanceof Layer)) { throw new Error('Argument must be an instance of Layer'); }
+            if (!this._layers.includes(layer)) {
+                this._layers.push(layer);
+                layer._map = this;
+                layer.onAdd();
+                // Set first TileLayer as base layer if none exists
+                if (!this._baseLayer && layer instanceof TileLayer) { this.setBaseLayer(layer); }
+                else { this.render(); } // Re-render if not base layer
+            }
+            return this;
+        }
+
+        removeLayer(layer) {
+            const index = this._layers.indexOf(layer);
+            if (index !== -1) {
+                this._layers.splice(index, 1);
+                layer.onRemove();
+                layer._map = null;
+                // If removed layer was the base layer, find a new one or clear background
+                if (this._baseLayer === layer) {
+                    this._baseLayer = this._layers.find(l => l instanceof TileLayer) || null;
+                    this.container.style.background = this._baseLayer ? this._baseLayer.getBackground() : '#000';
+                }
+                this.render();
+            }
+            return this;
+        }
+
+        setBaseLayer(newLayer) {
+            if (!(newLayer instanceof TileLayer)) { throw new Error('Argument must be an instance of TileLayer'); }
+            if (this._baseLayer === newLayer) { return this; }
+
+            if (this._baseLayer) { this.removeLayer(this._baseLayer); }
+
+            this._baseLayer = newLayer;
+            if (!this._layers.includes(newLayer)) { this.addLayer(newLayer); }
+            this.container.style.background = newLayer.getBackground();
+            // Adjust zoom if new base layer has different limits
+            this.zoom = Math.max(newLayer.getMinZoom(), Math.min(newLayer.getMaxZoom(), this.zoom));
+            this.fire('baselayerchange', { layer: newLayer });
+            this.render();
+            return this;
+        }
+
+        getBaseLayer() { return this._baseLayer; }
+
+        getLayers() { return [...this._layers]; }
+
+        addControl(control) {
+            if (!(control instanceof Control)) { throw new Error('Argument must be an instance of Control'); }
+            this._controls.push(control);
+            control.addTo(this);
+            return this;
+        }
+
+        removeControl(control) {
+            const index = this._controls.indexOf(control);
+            if (index !== -1) { this._controls.splice(index, 1); }
+            return this;
+        }
+
+        getControls() { return [...this._controls]; }
+
+        addHandler(name, HandlerClass) {
+            if (this._handlers[name]) {
+                console.warn(`[Atlas] Handler '${name}' already exists`);
+                return this;
+            }
+            this._handlers[name] = new HandlerClass(this);
+            this._handlers[name].enable();
+            return this;
+        }
+
+        removeHandler(name) {
+            if (!this._handlers[name]) { return this; }
+            this._handlers[name].destroy();
+            delete this._handlers[name];
+            return this;
+        }
+
+        getHandler(name) { return this._handlers[name] || null; }
+
+        setCenter(center) {
+            if (typeof center === 'object') {
+                const latlng = LatLng.from(center);
+                this.center = latlng;
+            }
+            return this;
+        }
+
+        getCenter() { return { ...this.center }; }
+
+        setZoom(z) {
+            const minZoom = this._baseLayer ? this._baseLayer.getMinZoom() : 0;
+            const maxZoom = this._baseLayer ? this._baseLayer.getMaxZoom() : 18;
+            const newZoom = Math.max(minZoom, Math.min(maxZoom, z));
+            if (Math.abs(newZoom - this.zoom) < 1e-6) { return this; } // Avoid unnecessary updates
+            this.fire('zoomstart');
+            this.zoom = newZoom;
+            this.render();
+            this.fire('zoom');
+            this.fire('move');
+            this.fire('moveend');
+            return this;
+        }
+
+        getZoom() { return this.zoom; }
+
+        setBearing(rad) {
+            const newRad = normalizeAngle(rad);
+            if (Math.abs(newRad - this.bearing) < 1e-6) { return this; } // Avoid unnecessary updates
+            this.fire('rotatestart');
+            this.bearing = newRad;
+            this.render();
+            this.fire('rotate');
+            this.fire('move');
+            this.fire('moveend');
+            return this;
+        }
+
+        getBearing() { return this.bearing; }
+
+        isFocused() { return document.activeElement === this.container; }
+
+        stopInertia() {
+            if (this._inertiaRAF) { cancelAnimationFrame(this._inertiaRAF); }
+            this._inertiaRAF = null;
+            return this;
+        }
+
+        _registerAnimation(animId) {
+            this._allRAFIds.add(animId);
+        }
+
+        _unregisterAnimation(animId) {
+            this._allRAFIds.delete(animId);
+        }
+
+        _pauseAnimations() {
+            this.stopAnimations();
+        }
+
+        _resumeAnimations() {
+            // Potentially resume animations here if needed
+        }
+
+        stopAnimations() {
+            this.stopInertia();
+            if (this._zoomAnim?.raf) {
+                cancelAnimationFrame(this._zoomAnim.raf);
+                this._unregisterAnimation('zoom');
+            }
+            this._zoomAnim = null;
+            if (this._flyAnim?.raf) {
+                cancelAnimationFrame(this._flyAnim.raf);
+                this._unregisterAnimation('fly');
+            }
+            this._flyAnim = null;
+            return this;
+        }
+
+        resize() {
+            const w = this.container.offsetWidth;
+            const h = this.container.offsetHeight;
+            this.dpr = window.devicePixelRatio || 1;
+            this.canvas.width = w * this.dpr;
+            this.canvas.height = h * this.dpr;
+            this.canvas.style.width = w + "px";
+            this.canvas.style.height = h + "px";
+            this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+            this.render();
+            this.fire('resize');
+            return this;
+        }
+
+        scheduleRender() {
+            this._scheduleRender();
+        }
+
+        render() {
+            this.scheduleRender();
+            return this;
+        }
+
+        _draw() {
+            const now = performance.now();
+            const frameTime = this._lastFrameTime ? now - this._lastFrameTime : 16.67; // Time since last frame
+            this._lastFrameTime = now;
+
+            this.performanceMonitor.mark('render');
+
+            const backgroundColor = this._baseLayer ? this._baseLayer.getBackground() : '#000';
+            const w = this.canvas.width / this.dpr;
+            const h = this.canvas.height / this.dpr;
+
+            this.ctx.save();
+            this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+            this.ctx.fillStyle = backgroundColor;
+            this.ctx.fillRect(0, 0, w, h);
+
+            for (const layer of this._layers) {
+                if (typeof layer.render === 'function') {
+                    this.errorBoundary.execute(() => layer.render());
+                }
+            }
+
+            this.ctx.restore();
+
+            this._updateLoadingIndicator();
+
+            const renderTime = this.performanceMonitor.measure('render').duration;
+            this.performanceMonitor.recordFrame({ frameTime, renderTime });
+        }
+
+        _updateLoadingIndicator() {
+            let loadingCount = 0;
+            for (const layer of this._layers) {
+                if (layer instanceof TileLayer) { loadingCount += layer.loadingTiles.size; }
+            }
+            const visible = loadingCount > 0;
+            this.loadingEl.classList.toggle('visible', visible);
+            this.loadingCountEl.textContent = loadingCount;
+        }
+
+        screenToLatLon(ax, ay, zoom = this.zoom, bearing = this.bearing, center = this.center) {
+            const w = this.canvas.width / this.dpr;
+            const h = this.canvas.height / this.dpr;
+
+            const zInt = Math.floor(this.zoom);
+            const ts = TILE_SIZE * Math.pow(2, zoom - zInt);
+            const ct = this.projection.latLngToTile(center, zInt);
+
+            const anchorVec = { x: ax - w / 2, y: ay - h / 2 };
+            const v = rotate(anchorVec.x / ts, anchorVec.y / ts, -bearing);
+            const tpt = { x: ct.x + v.x, y: ct.y + v.y };
+            const ll = this.projection.tileToLatLng(tpt.x, tpt.y, zInt);
+            return new LatLng(ll.lat, ll.lon);
+        }
+
+        latLngToContainerPoint(latlng) {
+            latlng = LatLng.from(latlng);
+            const w = this.canvas.width / this.dpr;
+            const h = this.canvas.height / this.dpr;
+
+            const zInt = Math.floor(this.zoom);
+            const ts = TILE_SIZE * Math.pow(2, this.zoom - zInt);
+            const ct = this.projection.latLngToTile(this.center, zInt);
+            const pt = this.projection.latLngToTile(latlng, zInt);
+
+            const trX = (pt.x - ct.x) * ts;
+            const trY = (pt.y - ct.y) * ts;
+
+            const anchorVec = rotate(trX, trY, this.bearing);
+            return { x: w / 2 + anchorVec.x, y: h / 2 + anchorVec.y };
+        }
+
+        lonLatToTile(lon, lat, z) {
+            return this.projection.latLngToTile({ lat, lon }, z);
+        }
+
+        applyZoomRotateAbout(ax, ay, newZoom, newBearing, anchorLL = null) {
+            const minZoom = this._baseLayer ? this._baseLayer.getMinZoom() : 0;
+            const maxZoom = this._baseLayer ? this._baseLayer.getMaxZoom() : 18;
+            newZoom = Math.max(minZoom, Math.min(maxZoom, newZoom));
+
+            const w = this.canvas.width / this.dpr;
+            const h = this.canvas.height / this.dpr;
+
+            const anchorVec = { x: ax - w / 2, y: ay - h / 2 };
+            const currAnchorLL = anchorLL || this.screenToLatLon(ax, ay, this.zoom, this.bearing, this.center);
+
+            const zInt = Math.floor(newZoom);
+            const ts = TILE_SIZE * Math.pow(2, newZoom - zInt);
+            const Ptile = this.projection.latLngToTile(currAnchorLL, zInt);
+            const v = rotate(anchorVec.x / ts, anchorVec.y / ts, -newBearing);
+            const ctNew = { x: Ptile.x - v.x, y: Ptile.y - v.y };
+            const newCenter = this.projection.tileToLatLng(ctNew.x, ctNew.y, zInt);
+
+            this.center = { lon: wrapLongitude(newCenter.lon), lat: clampLatitude(newCenter.lat) };
+            this.zoom = newZoom;
+            this.bearing = normalizeAngle(newBearing);
+
+            this.fire('zoom');
+            this.fire('rotate');
+            this.fire('move');
+            return this;
+        }
+
+        showZoomIndicator(x, y) {
+            if (this._zoomIndicator && this._zoomIndicator.parentNode) {
+                this.container.removeChild(this._zoomIndicator);
+            }
+            const indicator = document.createElement("div");
+            indicator.style.position = "absolute";
+            indicator.style.left = (x - 15) + "px";
+            indicator.style.top = (y - 15) + "px";
+            indicator.style.width = "30px";
+            indicator.style.height = "30px";
+            indicator.style.borderRadius = "50%";
+            indicator.style.border = "2px solid rgba(0, 120, 168, 0.8)";
+            indicator.style.opacity = "0.8";
+            indicator.style.pointerEvents = "none";
+            indicator.style.zIndex = "100";
+            indicator.style.animation = "zoom-indicator 0.6s ease-out forwards";
+            this.container.appendChild(indicator);
+            this._zoomIndicator = indicator;
+            setTimeout(() => {
+                if (this._zoomIndicator && this._zoomIndicator.parentNode) {
+                    this.container.removeChild(this._zoomIndicator);
+                }
+                this._zoomIndicator = null;
+            }, 600);
+            return this;
+        }
+
+        animateZoomRotateAbout(ax, ay, toZoom, toBearing = this.bearing, duration = WHEEL_ZOOM_DURATION, easing = EASING.easeInOutCubic) {
+            this.showZoomIndicator(ax, ay);
+            this.stopAnimations();
+
+            const startT = performance.now();
+            const sZoom = this.zoom;
+            const sBear = this.bearing;
+            const deltaBear = shortestAngleDiff(sBear, toBearing);
+            const anchorLL = this.screenToLatLon(ax, ay, this.zoom, this.bearing, this.center);
+
+            const step = () => {
+                const t = (performance.now() - startT) / Math.max(1, duration);
+                if (t >= 1) {
+                    this.applyZoomRotateAbout(ax, ay, toZoom, toBearing, anchorLL);
+                    this.render();
+                    this._unregisterAnimation('zoom');
+                    this._zoomAnim = null;
+                    this.fire('zoomend');
+                    this.fire('moveend');
+                    return;
+                }
+                const p = easing(t);
+                const z = sZoom + (toZoom - sZoom) * p;
+                const b = sBear + deltaBear * p;
+                this.applyZoomRotateAbout(ax, ay, z, b, anchorLL);
+                this.render();
+                this._zoomAnim = { raf: requestAnimationFrame(step) };
+            };
+
+            this.fire('zoomstart');
+            this.fire('movestart');
+            this._registerAnimation('zoom');
+            this._zoomAnim = { raf: requestAnimationFrame(step) };
+            return this;
+        }
+
+        smoothZoomAt(ax, ay, deltaZ) {
+            const minZoom = this._baseLayer ? this._baseLayer.getMinZoom() : 0;
+            const maxZoom = this._baseLayer ? this._baseLayer.getMaxZoom() : 18;
+            const target = Math.max(minZoom, Math.min(maxZoom, this.zoom + deltaZ));
+            this.animateZoomRotateAbout(ax, ay, target, this.bearing, WHEEL_ZOOM_DURATION, EASING.easeOutCubic);
+            return this;
+        }
+
+        fitBounds(bounds, options = {}) {
+            const padding = options.padding || 50;
+            const maxZoom = options.maxZoom || 18;
+            const duration = options.duration || 800;
+
+            const w = this.canvas.width / this.dpr;
+            const h = this.canvas.height / this.dpr;
+
+            const ne = this.latLngToContainerPoint(bounds.ne);
+            const sw = this.latLngToContainerPoint(bounds.sw);
+
+            const width = Math.max(ne.x - sw.x, 1);
+            const height = Math.max(sw.y - ne.y, 1);
+
+            const zoom = Math.log2(Math.min((w - 2 * padding) / width, (h - 2 * padding) / height) * Math.pow(2, this.zoom));
+            return this.flyTo({ center: bounds.center, zoom: Math.min(maxZoom, Math.max(0, zoom)), duration });
+        }
+
+        flyTo(options = {}) {
+            const { center = this.center, zoom = this.zoom, bearing = this.bearing, duration = FLYTO_DURATION, easing = EASING.easeInOutCubic } = options;
+            this.stopAnimations();
+
+            const startT = performance.now();
+            const sC = { ...this.center };
+            const eC = { ...center };
+            const dLon = wrapDeltaLon(eC.lon - sC.lon);
+            const dLat = eC.lat - sC.lat;
+
+            const sZ = this.zoom;
+            const eZ = zoom;
+
+            const sB = this.bearing;
+            const dB = shortestAngleDiff(sB, bearing);
+
+            const step = () => {
+                const t = (performance.now() - startT) / Math.max(1, duration);
+                if (t >= 1) {
+                    this.center = { lon: wrapLongitude(eC.lon), lat: clampLatitude(eC.lat) };
+                    this.zoom = eZ;
+                    this.bearing = normalizeAngle(bearing);
+                    this.render();
+                    this._unregisterAnimation('fly');
+                    this._flyAnim = null;
+                    this.fire('moveend');
+                    return;
+                }
+                const p = easing(t);
+                this.center = { lon: wrapLongitude(sC.lon + dLon * p), lat: clampLatitude(sC.lat + dLat * p) };
+                this.zoom = sZ + (eZ - sZ) * p;
+                this.bearing = normalizeAngle(sB + dB * p);
+                this.render();
+                this._flyAnim = { raf: requestAnimationFrame(step) };
+            };
+
+            this.fire('movestart');
+            this._registerAnimation('fly');
+            this._flyAnim = { raf: requestAnimationFrame(step) };
+            return this;
+        }
+
+        destroy() {
+            this.stopAnimations();
+            // Cancel any remaining animation frames
+            for (const rafId of this._allRAFIds) { cancelAnimationFrame(rafId); }
+            this._allRAFIds.clear();
+
+            window.removeEventListener('resize', this._onResize);
+
+            // Remove layers and controls
+            for (const layer of [...this._layers]) { this.removeLayer(layer); }
+            for (const control of [...this._controls]) { control.remove(); }
+
+            // Remove control containers
+            for (const corner in this._controlCorners) {
+                const container = this._controlCorners[corner];
+                if (container && container.parentNode) { container.parentNode.removeChild(container); }
+            }
+            this._controlCorners = {};
+
+            // Remove handlers
+            for (const name in this._handlers) { this.removeHandler(name); }
+
+            this.fire('unload');
+            this.clear(); // Clear any remaining state if applicable
+            console.info('[Atlas.js] Instance destroyed');
+            return this;
+        }
+    }
+
+    // --- Helper Function ---
+
+    function createTileLayerFromConfig(key) {
+        const cfg = LAYERS[key];
+        if (!cfg) { throw new Error(`[Atlas] Unknown layer: ${key}`); }
+        return new TileLayer(cfg.urlTemplate, {
+            minZoom: cfg.minZoom,
+            maxZoom: cfg.maxZoom,
+            attribution: cfg.attribution,
+            background: cfg.background,
+            supportsRetina: cfg.supportsRetina,
+            maxCacheSize: cfg.maxCacheSize,
+            subdomains: cfg.subdomains
+        });
+    }
+
+    // --- Initialization ---
+
+    let atlasInstance = null;
+
+    function initializeAtlas() {
+        try {
+            if (atlasInstance) {
+                atlasInstance.destroy();
+                atlasInstance = null;
+            }
+            atlasInstance = new Atlas("map", {
+                defaultCenter: { lon: 0, lat: 0 },
+                defaultZoom: 3,
+                retina: "auto"
+            });
+            const osmLayer = createTileLayerFromConfig('OSM');
+            atlasInstance.setBaseLayer(osmLayer);
+            console.info('[Atlas.js] Initialization complete');
+        } catch (error) {
+            console.error('[Atlas.js] Initialization failed:', error);
+        }
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initializeAtlas);
+    } else {
+        initializeAtlas();
+    }
+
+    // --- Export for CommonJS (Node.js style) ---
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = {
+            Atlas,
+            TileLayer,
+            GeoJSONLayer,
+            Layer,
+            Control,
+            ZoomControl,
+            LayerControl,
+            FullscreenControl,
+            AttributionControl,
+            CompassControl,
+            GISUtils,
+            WebMercatorProjection,
+            Bounds,
+            PluginSystem
+        };
+    }
+
+</script>
+</body>
+</html>
+
