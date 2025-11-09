@@ -16,6 +16,7 @@ function injectAtlasCSS() {
     .atlas-zoom-btn { display: block; width: 30px; height: 30px; line-height: 30px; text-align: center; font-size: 18px; cursor: pointer; border: none; background: none; }
     .atlas-zoom-btn:active { background: #eee; }
     .atlas-attribution { position: absolute; bottom: 0; right: 0; background: rgba(255,255,255,0.7); font-size: 11px; padding: 2px 8px; border-radius: 4px 0 0 0; z-index: 1000; }
+    .atlas-popup { position: absolute; background: #fff; border: 1px solid #ccc; padding: 5px 10px; border-radius: 4px; z-index: 2000; pointer-events: auto; box-shadow: 0 2px 8px rgba(0,0,0,0.2); min-width: 80px; max-width: 200px; font-size: 13px; line-height: 1.4; }
   `;
   document.head.appendChild(style);
 }
@@ -270,12 +271,24 @@ Atlas.map = function(container, options) {
   if (typeof container === 'string') {
     container = document.getElementById(container);
   }
-  if (!container) throw new Error('Atlas: Container not found');
+  if (!container || !(container instanceof HTMLElement)) {
+    throw new Error('Atlas: Invalid container element.');
+  }
+  if (!options || typeof options !== 'object') {
+    throw new Error('Atlas: Invalid options object.');
+  }
+  if (!Array.isArray(options.center) || options.center.length !== 2) {
+    throw new Error('Atlas: Invalid center coordinates.');
+  }
+  if (typeof options.zoom !== 'number') {
+    throw new Error('Atlas: Invalid zoom level.');
+  }
+
   container.classList.add('atlas-map');
   var map = Object.create(Atlas.MapProto);
   map._container = container;
-  map._center = options.center || [0, 0];
-  map._zoom = options.zoom || 0;
+  map._center = options.center;
+  map._zoom = options.zoom;
   map._layers = [];
   map._markers = [];
   map._events = {};
@@ -360,6 +373,19 @@ Atlas.TileLayerProto = {
         delete this._tiles[tileId];
       }
     }
+  },
+
+  /**
+   * Removes the tile layer from the map.
+   */
+  remove: function() {
+    if (this._container && this._container.parentNode) {
+      this._container.parentNode.removeChild(this._container);
+    }
+    if (this._map) {
+      var idx = this._map._layers.indexOf(this);
+      if (idx !== -1) this._map._layers.splice(idx, 1);
+    }
   }
 };
 
@@ -372,6 +398,9 @@ Atlas.TileLayerProto = {
  * @returns {Atlas.TileLayerProto} The tile layer instance.
  */
 Atlas.tileLayer = function(urlTemplate, options) {
+  if (typeof urlTemplate !== 'string') {
+    throw new Error('Atlas: Invalid URL template.');
+  }
   var layer = Object.create(Atlas.TileLayerProto);
   layer._urlTemplate = urlTemplate;
   layer._options = options || {};
@@ -444,6 +473,50 @@ Atlas.MarkerProto = {
     var top = markerPx[1] - centerPx[1] + size.height/2;
     this._el.style.left = left + 'px';
     this._el.style.top = top + 'px';
+  },
+
+  /**
+   * Removes the marker from the map.
+   */
+  remove: function() {
+    if (this._el && this._el.parentNode) {
+      this._el.parentNode.removeChild(this._el);
+    }
+    if (this._map) {
+      var idx = this._map._markers.indexOf(this);
+      if (idx !== -1) this._map._markers.splice(idx, 1);
+    }
+    if (this._popup) {
+      this._popup.parentNode.removeChild(this._popup);
+      this._popup = null;
+    }
+  },
+
+  /**
+   * Binds a popup to the marker.
+   * @param {string} html The HTML content of the popup.
+   * @returns {Atlas.MarkerProto} The marker instance.
+   */
+  bindPopup: function(html) {
+    this._popupHtml = html;
+    this._el.addEventListener('click', () => this.openPopup());
+    return this;
+  },
+
+  /**
+   * Opens the popup for the marker.
+   */
+  openPopup: function() {
+    if (!this._popup) {
+      this._popup = document.createElement('div');
+      this._popup.className = 'atlas-popup';
+      this._popup.innerHTML = this._popupHtml;
+      this._map._container.appendChild(this._popup);
+    }
+    var rect = this._el.getBoundingClientRect();
+    var mapRect = this._map._container.getBoundingClientRect();
+    this._popup.style.left = (rect.left - mapRect.left) + 'px';
+    this._popup.style.top = (rect.top - mapRect.top - this._popup.offsetHeight - 5) + 'px';
   }
 };
 
@@ -457,6 +530,9 @@ Atlas.MarkerProto = {
  * @returns {Atlas.MarkerProto} The marker instance.
  */
 Atlas.marker = function(latlng, options) {
+  if (!Array.isArray(latlng) || latlng.length !== 2) {
+    throw new Error('Atlas: Invalid marker coordinates.');
+  }
   var marker = Object.create(Atlas.MarkerProto);
   marker._latlng = latlng;
   marker._options = options || {};
