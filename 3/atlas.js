@@ -1,4 +1,10 @@
 /**
+ * Atlas.js - A lightweight, dependency-free mapping library.
+ * Version: 1.0.0
+ * License: BSD-2-Clause
+ */
+
+/**
  * Injects the necessary CSS for Atlas.js into the document head.
  * @private
  */
@@ -9,7 +15,8 @@ function injectAtlasCSS() {
   style.innerHTML = `
     .atlas-map { position: relative; overflow: hidden; background: #e5e3df; user-select: none; }
     .atlas-tile-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-    .atlas-tile { position: absolute; width: 256px; height: 256px; }
+    .atlas-tile { position: absolute; width: 256px; height: 256px; opacity: 0; transition: opacity 0.3s; }
+    .atlas-tile.loaded { opacity: 1; }
     .atlas-marker { position: absolute; transform: translate(-50%, -100%); cursor: pointer; z-index: 10; }
     .atlas-marker img { width: 25px; height: 41px; }
     .atlas-zoom-control { position: absolute; top: 10px; left: 10px; background: #fff; border-radius: 4px; box-shadow: 0 1px 4px rgba(0,0,0,0.3); z-index: 1000; }
@@ -98,9 +105,13 @@ Atlas.MapProto = {
     var zoomIn = document.createElement('button');
     zoomIn.className = 'atlas-zoom-btn';
     zoomIn.innerHTML = '+';
+    zoomIn.setAttribute('tabindex', '0');
+    zoomIn.setAttribute('aria-label', 'Zoom in');
     var zoomOut = document.createElement('button');
     zoomOut.className = 'atlas-zoom-btn';
     zoomOut.innerHTML = '-';
+    zoomOut.setAttribute('tabindex', '0');
+    zoomOut.setAttribute('aria-label', 'Zoom out');
     zoomControl.appendChild(zoomIn);
     zoomControl.appendChild(zoomOut);
     this._container.appendChild(zoomControl);
@@ -111,6 +122,7 @@ Atlas.MapProto = {
     var attribution = document.createElement('div');
     attribution.className = 'atlas-attribution';
     attribution.innerHTML = '';
+    attribution.setAttribute('aria-label', 'Map attribution');
     this._container.appendChild(attribution);
     this._attribution = attribution;
 
@@ -237,6 +249,13 @@ Atlas.MapProto = {
 
     // Responsive
     window.addEventListener('resize', () => this._onResize());
+
+    // Keyboard navigation
+    this._container.setAttribute('tabindex', '0');
+    this._container.addEventListener('keydown', (e) => {
+      if (e.key === '+' || e.key === '=') this.setView(this._center, this._zoom + 1);
+      if (e.key === '-' || e.key === '_') this.setView(this._center, this._zoom - 1);
+    });
   },
 
   /**
@@ -253,8 +272,11 @@ Atlas.MapProto = {
    * @private
    */
   _update: function() {
-    this._layers.forEach(layer => layer._renderTiles && layer._renderTiles());
-    this._markers.forEach(marker => marker._updatePosition && marker._updatePosition());
+    if (this._updateTimeout) clearTimeout(this._updateTimeout);
+    this._updateTimeout = setTimeout(() => {
+      this._layers.forEach(layer => layer._renderTiles && layer._renderTiles());
+      this._markers.forEach(marker => marker._updatePosition && marker._updatePosition());
+    }, 16); // ~60fps
   }
 };
 
@@ -292,6 +314,7 @@ Atlas.map = function(container, options) {
   map._layers = [];
   map._markers = [];
   map._events = {};
+  map._attributions = [];
   map._initDOM();
   map.setView(map._center, map._zoom);
   return map;
@@ -318,7 +341,8 @@ Atlas.TileLayerProto = {
     map.on('move', this._renderTiles.bind(this));
     map.on('zoom', this._renderTiles.bind(this));
     if (this._options.attribution) {
-      map._attribution.innerHTML = this._options.attribution;
+      map._attributions.push(this._options.attribution);
+      map._attribution.innerHTML = map._attributions.join(' | ');
     }
     return this;
   },
@@ -355,8 +379,12 @@ Atlas.TileLayerProto = {
         } else {
           tile = document.createElement('img');
           tile.className = 'atlas-tile';
+          tile.onload = function() {
+            this.classList.add('loaded');
+          };
           tile.onerror = function() {
             this.src = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+            this.classList.add('loaded');
           };
           var tileUrl = this._urlTemplate.replace('{z}', zoom).replace('{x}', wrappedX).replace('{y}', y).replace('{s}', 'a');
           tile.src = tileUrl;
@@ -385,6 +413,11 @@ Atlas.TileLayerProto = {
     if (this._map) {
       var idx = this._map._layers.indexOf(this);
       if (idx !== -1) this._map._layers.splice(idx, 1);
+    }
+    if (this._options.attribution) {
+      var idx = this._map._attributions.indexOf(this._options.attribution);
+      if (idx !== -1) this._map._attributions.splice(idx, 1);
+      this._map._attribution.innerHTML = this._map._attributions.join(' | ');
     }
   }
 };
@@ -444,6 +477,8 @@ Atlas.MarkerProto = {
     this._updatePosition();
     map.on('move', this._updatePosition.bind(this));
     map.on('zoom', this._updatePosition.bind(this));
+    map.on('move', () => { if (this._popup) this._positionPopup(); });
+    map.on('zoom', () => { if (this._popup) this._positionPopup(); });
     return this;
   },
 
@@ -507,12 +542,28 @@ Atlas.MarkerProto = {
    * Opens the popup for the marker.
    */
   openPopup: function() {
+    // Close any open popup
+    if (this._map._openPopup && this._map._openPopup !== this._popup) {
+      this._map._openPopup.parentNode.removeChild(this._map._openPopup);
+      this._map._openPopup = null;
+    }
+
     if (!this._popup) {
       this._popup = document.createElement('div');
       this._popup.className = 'atlas-popup';
       this._popup.innerHTML = this._popupHtml;
       this._map._container.appendChild(this._popup);
     }
+    this._map._openPopup = this._popup;
+    this._positionPopup();
+  },
+
+  /**
+   * Positions the popup on the map.
+   * @private
+   */
+  _positionPopup: function() {
+    if (!this._popup) return;
     var rect = this._el.getBoundingClientRect();
     var mapRect = this._map._container.getBoundingClientRect();
     this._popup.style.left = (rect.left - mapRect.left) + 'px';
@@ -575,8 +626,22 @@ var map = Atlas.map('map', {
   center: [51.505, -0.09],
   zoom: 13
 });
-Atlas.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+
+var osmLayer = Atlas.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution: '&copy; OpenStreetMap contributors'
 }).addTo(map);
-Atlas.marker([51.5, -0.09], { title: 'A marker!' }).addTo(map);
+
+var marker = Atlas.marker([51.5, -0.09], { title: 'A marker!' })
+  .addTo(map)
+  .bindPopup('<b>Hello world!</b><br>I am a popup.');
+
+// Example of removing a marker after 5 seconds
+setTimeout(function() {
+  marker.remove();
+}, 5000);
+
+// Example of removing a layer after 10 seconds
+setTimeout(function() {
+  osmLayer.remove();
+}, 10000);
 */
