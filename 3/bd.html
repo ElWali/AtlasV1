@@ -133,7 +133,7 @@
     const filterOffice = document.getElementById('filterOffice');
 
     async function loadExcel() {
-      const response = await fetch('PACHALIK.xlsx');
+      const response = await fetch('LISTES ELECTORALES PACHALIK.xlsx');
       const arrayBuffer = await response.arrayBuffer();
       const workbook = XLSX.read(arrayBuffer, { type: 'array' });
       const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
