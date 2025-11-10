@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>إدارة الهيئة الناخبة - جماعة طرفاية</title>
+  <style>
+    body {
+      font-family: 'Cairo', sans-serif;
+      background: #f5f6fa;
+      color: #222;
+      margin: 0;
+      direction: rtl;
+    }
+    header {
+      background: linear-gradient(90deg, #003366, #0059b3);
+      color: white;
+      padding: 20px;
+      text-align: center;
+      font-size: 1.6em;
+      font-weight: bold;
+    }
+    main {
+      padding: 20px;
+      max-width: 1500px;
+      margin: auto;
+    }
+    .dashboard {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 15px;
+      margin-bottom: 25px;
+    }
+    .card {
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+      padding: 20px;
+      text-align: center;
+      transition: 0.3s;
+    }
+    .card:hover {
+      transform: translateY(-3px);
+    }
+    .card h3 { margin: 0; color: #004080; }
+    .card p { font-size: 1.4em; font-weight: bold; color: #333; }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: space-between;
+      margin-bottom: 15px;
+    }
+    input, select, button {
+      padding: 8px 12px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 1em;
+    }
+    button {
+      background-color: #004080;
+      color: white;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+    button:hover { background-color: #0073e6; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 10px;
+      text-align: center;
+    }
+    th { background-color: #e6eef8; cursor: pointer; }
+    tr:nth-child(even) { background: #f9f9f9; }
+    .stats, canvas {
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+    canvas { max-width: 100%; }
+  </style>
+</head>
+<body>
+  <header>الهيئة الناخبة - جماعة طرفاية</header>
+  <main>
+    <div class="dashboard" id="dashboard"></div>
+
+    <div class="controls">
+      <input type="text" id="search" placeholder="ابحث حسب الاسم أو رقم البطاقة...">
+      <select id="filterGender"><option value="">كل الأجناس</option><option value="M">ذكور</option><option value="F">إناث</option></select>
+      <select id="filterDistrict"><option value="">كل الدوائر</option></select>
+      <select id="filterOffice"><option value="">كل مكاتب التصويت</option></select>
+      <button id="printReport">طباعة تقرير المكتب</button>
+      <button id="saveExcel">💾 حفظ التعديلات</button>
+    </div>
+
+    <div class="stats">
+      <h3>الإحصائيات العامة</h3>
+      <p>إجمالي الناخبين: <span id="totalCount">0</span></p>
+      <p>عدد الذكور: <span id="maleCount">0</span> | عدد الإناث: <span id="femaleCount">0</span></p>
+      <canvas id="districtChart"></canvas>
+    </div>
+
+    <div class="stats">
+      <h3>إحصائيات تفصيلية حسب الدائرة الانتخابية</h3>
+      <canvas id="districtComparisonChart"></canvas>
+    </div>
+
+    <table id="dataTable">
+      <thead></thead>
+      <tbody></tbody>
+    </table>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    let data = [];
+    let filteredData = [];
+
+    const dashboard = document.getElementById('dashboard');
+    const searchInput = document.getElementById('search');
+    const filterGender = document.getElementById('filterGender');
+    const filterDistrict = document.getElementById('filterDistrict');
+    const filterOffice = document.getElementById('filterOffice');
+
+    async function loadExcel() {
+      const response = await fetch('LISTES ELECTORALES PACHALIK.xlsx');
+      const arrayBuffer = await response.arrayBuffer();
+      const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      data = XLSX.utils.sheet_to_json(firstSheet);
+      filteredData = data;
+      fillFilters();
+      renderTable();
+      updateStats();
+      updateDashboard();
+    }
+
+    function fillFilters() {
+      const districts = [...new Set(data.map(r => r['الدائرة الانتخابية']))];
+      districts.forEach(d => {
+        let opt = document.createElement('option');
+        opt.value = d; opt.textContent = d;
+        filterDistrict.appendChild(opt);
+      });
+
+      const offices = [...new Set(data.map(r => r['اسم مكتب التصويت']))];
+      offices.forEach(o => {
+        let opt = document.createElement('option');
+        opt.value = o; opt.textContent = o;
+        filterOffice.appendChild(opt);
+      });
+    }
+
+    function updateDashboard() {
+      dashboard.innerHTML = '';
+      const districts = [...new Set(data.map(r => r['الدائرة الانتخابية']))];
+      districts.forEach(d => {
+        const inDistrict = data.filter(r => r['الدائرة الانتخابية'] === d);
+        const males = inDistrict.filter(r => r['الجنس'] === 'M').length;
+        const females = inDistrict.filter(r => r['الجنس'] === 'F').length;
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `<h3>الدائرة ${d}</h3><p>${inDistrict.length} ناخب</p><p>ذكور: ${males} | إناث: ${females}</p>`;
+        dashboard.appendChild(card);
+      });
+    }
+
+    function renderTable() {
+      const table = document.getElementById('dataTable');
+      const thead = table.querySelector('thead');
+      const tbody = table.querySelector('tbody');
+      thead.innerHTML = '';
+      tbody.innerHTML = '';
+
+      if (filteredData.length === 0) return;
+
+      const headers = Object.keys(filteredData[0]);
+      const headerRow = document.createElement('tr');
+      headers.forEach(h => {
+        const th = document.createElement('th');
+        th.textContent = h;
+        headerRow.appendChild(th);
+      });
+      thead.appendChild(headerRow);
+
+      filteredData.forEach(row => {
+        const tr = document.createElement('tr');
+        headers.forEach(h => {
+          const td = document.createElement('td');
+          td.contentEditable = true;
+          td.textContent = row[h];
+          td.addEventListener('input', () => row[h] = td.textContent);
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+    }
+
+    function updateStats() {
+      document.getElementById('totalCount').textContent = filteredData.length;
+      document.getElementById('maleCount').textContent = filteredData.filter(r => r['الجنس'] === 'M').length;
+      document.getElementById('femaleCount').textContent = filteredData.filter(r => r['الجنس'] === 'F').length;
+
+      const byDistrict = {};
+      filteredData.forEach(r => {
+        const d = r['الدائرة الانتخابية'];
+        if (!byDistrict[d]) byDistrict[d] = { M: 0, F: 0 };
+        byDistrict[d][r['الجنس']]++;
+      });
+
+      const labels = Object.keys(byDistrict);
+      const males = labels.map(l => byDistrict[l].M);
+      const females = labels.map(l => byDistrict[l].F);
+
+      new Chart(document.getElementById('districtChart'), {
+        type: 'bar',
+        data: { labels, datasets: [
+          { label: 'ذكور', data: males, backgroundColor: '#0073e6' },
+          { label: 'إناث', data: females, backgroundColor: '#ff6384' }
+        ]},
+      });
+
+      new Chart(document.getElementById('districtComparisonChart'), {
+        type: 'pie',
+        data: {
+          labels,
+          datasets: [{ data: labels.map(l => males[labels.indexOf(l)] + females[labels.indexOf(l)]), backgroundColor: ['#0073e6','#ff6384','#ff9f40','#36a2eb','#9966ff','#4bc0c0'] }]
+        }
+      });
+    }
+
+    function applyFilters() {
+      const searchVal = searchInput.value.toLowerCase();
+      filteredData = data.filter(row => {
+        const matchesSearch = Object.values(row).some(v => v && v.toString().toLowerCase().includes(searchVal));
+        const matchesGender = !filterGender.value || row['الجنس'] === filterGender.value;
+        const matchesDistrict = !filterDistrict.value || row['الدائرة الانتخابية'] == filterDistrict.value;
+        const matchesOffice = !filterOffice.value || row['اسم مكتب التصويت'] == filterOffice.value;
+        return matchesSearch && matchesGender && matchesDistrict && matchesOffice;
+      });
+      renderTable();
+      updateStats();
+    }
+
+    let suggestions = document.createElement('datalist');
+    suggestions.id = 'suggestionsList';
+    document.body.appendChild(suggestions);
+    searchInput.setAttribute('list', 'suggestionsList');
+
+    searchInput.addEventListener('input', () => {
+      const val = searchInput.value.toLowerCase();
+      const found = [...new Set(data.flatMap(r => Object.values(r)))]
+        .filter(v => v && v.toString().toLowerCase().includes(val))
+        .slice(0, 10);
+      suggestions.innerHTML = found.map(v => `<option value="${v}">`).join('');
+      applyFilters();
+    });
+
+    filterGender.onchange = filterDistrict.onchange = filterOffice.onchange = applyFilters;
+
+    document.getElementById('saveExcel').onclick = () => {
+      const ws = XLSX.utils.json_to_sheet(filteredData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'الناخبين');
+      XLSX.writeFile(wb, 'القائمة_المعدلة.xlsx');
+    };
+
+    document.getElementById('printReport').onclick = () => {
+      const office = filterOffice.value;
+      let printable = filteredData.filter(r => !office || r['اسم مكتب التصويت'] == office);
+      let newWin = window.open('');
+      newWin.document.write(`<h2>تقرير مكتب التصويت ${office || ''}</h2>`);
+      newWin.document.write('<table border="1"><tr>' + Object.keys(printable[0]).map(h => `<th>${h}</th>`).join('') + '</tr>');
+      printable.forEach(r => {
+        newWin.document.write('<tr>' + Object.values(r).map(v => `<td>${v}</td>`).join('') + '</tr>');
+      });
+      newWin.document.write('</table>');
+      newWin.print();
+    };
+
+    loadExcel();
+  </script>
+</body>
+</html>
