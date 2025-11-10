@@ -23,6 +23,7 @@
   "homepage": "https://github.com/ElWali/AtlasV1#readme",
   "dependencies": {
     "canvas": "^3.2.0",
+    "chai": "^6.2.0",
     "jsdom": "^27.1.0",
     "mocha": "^11.7.5"
   }
