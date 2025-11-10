@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>لوحة إدارة الهيئة الناخبة - جماعة طرفايا</title>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #1a365d;
+      --primary-dark: #0d2140;
+      --blue: #2b6cb0;
+      --red: #e53e3e;
+      --green: #38a169;
+      --light-bg: #f8fafc;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --text: #1a202c;
+      --text-light: #4a5568;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Tajawal', sans-serif;
+      background-color: var(--light-bg);
+      color: var(--text);
+      direction: rtl;
+      line-height: 1.6;
+    }
+    header {
+      background: linear-gradient(90deg, var(--primary), var(--primary-dark));
+      color: white;
+      padding: 1.25rem 2rem;
+      text-align: center;
+      font-size: 1.5rem;
+      font-weight: 700;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+    main {
+      padding: 1.5rem;
+      max-width: 1600px;
+      margin: 0 auto;
+    }
+    #loading, #error {
+      text-align: center;
+      padding: 1.5rem;
+      margin: 1rem 0;
+      border-radius: 8px;
+    }
+    #loading {
+      background: #ebf8ff;
+      color: var(--blue);
+      display: none;
+    }
+    #error {
+      background: #fed7d7;
+      color: var(--red);
+      display: none;
+    }
+
+    /* Controls */
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 1.5rem;
+      align-items: center;
+    }
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .control-group label {
+      font-size: 0.85rem;
+      color: var(--text-light);
+    }
+    input, select, button {
+      padding: 0.5rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 0.95rem;
+      font-family: inherit;
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--blue);
+      box-shadow: 0 0 0 2px rgba(43, 108, 176, 0.2);
+    }
+    button {
+      background-color: var(--primary);
+      color: white;
+      cursor: pointer;
+      border: none;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background-color: var(--primary-dark);
+    }
+    button.secondary {
+      background-color: #718096;
+    }
+    button.secondary:hover {
+      background-color: #4a5568;
+    }
+
+    /* Active Filters */
+    .active-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 1rem 0;
+    }
+    .filter-badge {
+      background: #dbeafe;
+      color: var(--blue);
+      padding: 0.25rem 0.75rem;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .filter-badge .clear {
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    /* Dashboard */
+    .dashboard {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+    .card {
+      background: var(--card-bg);
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      padding: 1.25rem;
+      transition: transform 0.2s;
+    }
+    .card:hover {
+      transform: translateY(-3px);
+    }
+    .card h3 {
+      margin: 0 0 0.75rem;
+      color: var(--primary);
+      font-size: 1.1rem;
+    }
+    .metric {
+      font-size: 1.4rem;
+      font-weight: 700;
+      margin: 0.5rem 0;
+    }
+    .sparkline {
+      height: 40px;
+      margin-top: 0.5rem;
+    }
+
+    /* Charts */
+    .stats {
+      background: var(--card-bg);
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      padding: 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+    .stats h3 {
+      margin-top: 0;
+      color: var(--primary);
+      font-size: 1.25rem;
+    }
+    .chart-container {
+      height: 320px;
+      position: relative;
+      margin-top: 1rem;
+    }
+
+    /* Table */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--card-bg);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      margin-top: 1rem;
+    }
+    th, td {
+      padding: 0.75rem;
+      text-align: center;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.9rem;
+    }
+    th {
+      background-color: #f1f5f9;
+      font-weight: 600;
+      color: var(--primary);
+      cursor: pointer;
+      position: sticky;
+      top: 0;
+    }
+    th:hover {
+      background-color: #e2e8f0;
+    }
+    td[contenteditable]:focus {
+      outline: 2px solid var(--blue);
+      border-radius: 3px;
+    }
+    tr.highlight {
+      background-color: #fffbeb !important;
+    }
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    @media (max-width: 768px) {
+      .controls {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      button {
+        justify-content: center;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>لوحة إدارة الهيئة الناخبة - جماعة طرفايا</header>
+  <main>
+    <div id="loading">جارٍ تحميل البيانات الانتخابية...</div>
+    <div id="error"></div>
+
+    <div class="controls">
+      <div class="control-group">
+        <label for="search">بحث</label>
+        <input type="text" id="search" placeholder="ابحث في الأسماء أو أرقام البطاقة...">
+      </div>
+      <div class="control-group">
+        <label for="filterGender">الجنس</label>
+        <select id="filterGender">
+          <option value="">الكل</option>
+          <option value="M">ذكور</option>
+          <option value="F">إناث</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label for="filterDistrict">الدائرة الانتخابية</label>
+        <select id="filterDistrict"><option value="">الكل</option></select>
+      </div>
+      <div class="control-group">
+        <label for="filterOffice">مكتب التصويت</label>
+        <select id="filterOffice"><option value="">الكل</option></select>
+      </div>
+      <button id="saveExcel">💾 تصدير إلى Excel</button>
+      <button id="printReport" class="secondary">🖨️ طباعة التقرير</button>
+    </div>
+
+    <div class="active-filters" id="activeFilters"></div>
+
+    <div class="dashboard" id="dashboard"></div>
+
+    <div class="stats">
+      <h3>التوزيع حسب الجنس والدائرة الانتخابية</h3>
+      <div class="chart-container">
+        <canvas id="genderDistrictChart"></canvas>
+      </div>
+    </div>
+
+    <div class="stats">
+      <h3>حصة كل دائرة انتخابية</h3>
+      <div class="chart-container">
+        <canvas id="districtDoughnutChart"></canvas>
+      </div>
+    </div>
+
+    <table id="dataTable">
+      <thead></thead>
+      <tbody></tbody>
+    </table>
+  </main>
+
+  <!-- CDNs -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js"></script>
+
+  <script>
+    // === State ===
+    let rawData = [];
+    let currentData = [];
+    let charts = {};
+    let sortConfig = { key: null, direction: 'asc' };
+
+    // === DOM Elements ===
+    const els = {
+      loading: document.getElementById('loading'),
+      error: document.getElementById('error'),
+      search: document.getElementById('search'),
+      filterGender: document.getElementById('filterGender'),
+      filterDistrict: document.getElementById('filterDistrict'),
+      filterOffice: document.getElementById('filterOffice'),
+      activeFilters: document.getElementById('activeFilters'),
+      dashboard: document.getElementById('dashboard'),
+      genderDistrictChart: document.getElementById('genderDistrictChart'),
+      districtDoughnutChart: document.getElementById('districtDoughnutChart'),
+      dataTable: document.getElementById('dataTable')
+    };
+
+    // === Utilities ===
+    const debounce = (func, wait) => {
+      let timeout;
+      return (...args) => {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, args), wait);
+      };
+    };
+
+    const showLoading = () => { els.loading.style.display = 'block'; els.error.style.display = 'none'; };
+    const hideLoading = () => { els.loading.style.display = 'none'; };
+    const showError = (msg) => { els.error.textContent = `⚠️ ${msg}`; els.error.style.display = 'block'; };
+
+    // === Data Loading ===
+    async function loadExcel() {
+      try {
+        showLoading();
+        const response = await fetch('LISTES ELECTORALES PACHALIK.xlsx');
+        if (!response.ok) throw new Error(`الملف غير موجود (${response.status})`);
+        
+        const arrayBuffer = await response.arrayBuffer();
+        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+        if (jsonData.length < 2) throw new Error('الملف فارغ');
+
+        const headers = jsonData[0].map(h => (h || '').toString().trim());
+        rawData = jsonData.slice(1).map(row => {
+          const record = {};
+          headers.forEach((header, i) => {
+            record[header] = (row && row[i] !== undefined ? row[i] : '').toString().trim();
+          });
+          return record;
+        });
+
+        // Validate required fields from your schema
+        const required = ['الاسم الشخصي للناخب', 'الاسم العائلي للناخب', 'رقم بطــاقة التعريف', 'الجنس', 'الدائرة الانتخابية', 'اسم مكتب التصويت'];
+        const missing = required.filter(f => !(f in rawData[0]));
+        if (missing.length) throw new Error(`الأعمدة المطلوبة مفقودة: ${missing.join(', ')}`);
+
+        // Initialize Fuse.js for fuzzy search on name + ID
+        fuse = new Fuse(rawData, {
+          keys: ['الاسم الشخصي للناخب', 'الاسم العائلي للناخب', 'رقم بطــاقة التعريف'],
+          threshold: 0.3,
+          includeScore: true
+        });
+
+        applyFilters();
+        updateDashboard();
+        setupEventListeners();
+
+      } catch (err) {
+        console.error(err);
+        showError(err.message || 'فشل تحميل البيانات');
+      } finally {
+        hideLoading();
+      }
+    }
+
+    // === Filtering & Sorting ===
+    function applyFilters() {
+      const searchQuery = els.search.value.trim();
+      const gender = els.filterGender.value;
+      const district = els.filterDistrict.value;
+      const office = els.filterOffice.value;
+
+      let filtered = [...rawData];
+
+      if (gender) filtered = filtered.filter(r => r['الجنس'] === gender);
+      if (district) filtered = filtered.filter(r => r['الدائرة الانتخابية'] === district);
+      if (office) filtered = filtered.filter(r => r['اسم مكتب التصويت'] === office);
+
+      if (searchQuery) {
+        const results = fuse.search(searchQuery);
+        const ids = new Set(results.map(r => r.refIndex));
+        filtered = filtered.filter((_, i) => ids.has(rawData.indexOf(filtered[i])));
+      }
+
+      if (sortConfig.key) {
+        filtered.sort((a, b) => {
+          const aVal = a[sortConfig.key] || '';
+          const bVal = b[sortConfig.key] || '';
+          if (typeof aVal === 'string') {
+            return sortConfig.direction === 'asc' 
+              ? aVal.localeCompare(bVal, 'ar')
+              : bVal.localeCompare(aVal, 'ar');
+          }
+          return sortConfig.direction === 'asc' ? aVal - bVal : bVal - aVal;
+        });
+      }
+
+      currentData = filtered;
+      renderTable();
+      updateCharts();
+      updateActiveFilters();
+    }
+
+    function updateActiveFilters() {
+      const filters = [];
+      if (els.search.value) filters.push({ label: `البحث: "${els.search.value}"`, clear: () => { els.search.value = ''; applyFilters(); } });
+      if (els.filterGender.value) filters.push({ label: `الجنس: ${els.filterGender.value === 'M' ? 'ذكور' : 'إناث'}`, clear: () => { els.filterGender.value = ''; applyFilters(); } });
+      if (els.filterDistrict.value) filters.push({ label: `الدائرة: ${els.filterDistrict.value}`, clear: () => { els.filterDistrict.value = ''; applyFilters(); } });
+      if (els.filterOffice.value) filters.push({ label: `المكتب: ${els.filterOffice.value}`, clear: () => { els.filterOffice.value = ''; applyFilters(); } });
+
+      els.activeFilters.innerHTML = filters.length ? 
+        filters.map(f => 
+          `<div class="filter-badge">
+            ${f.label}
+            <span class="clear" onclick="(${f.clear.toString()})()">×</span>
+          </div>`
+        ).join('') : '';
+    }
+
+    // === Dashboard ===
+    function updateDashboard() {
+      const districts = [...new Set(rawData.map(r => r['الدائرة الانتخابية']).filter(Boolean))];
+      els.dashboard.innerHTML = '';
+
+      districts.forEach(d => {
+        const inDistrict = rawData.filter(r => r['الدائرة الانتخابية'] === d);
+        const males = inDistrict.filter(r => r['الجنس'] === 'M').length;
+        const females = inDistrict.length - males;
+        const total = inDistrict.length;
+
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+          <h3>الدائرة ${d}</h3>
+          <div class="metric">${total.toLocaleString('ar-EG')}</div>
+          <div>ذكور: ${males} | إناث: ${females}</div>
+          <div class="sparkline" id="spark-${d.replace(/\s+/g, '_')}"></div>
+        `;
+        els.dashboard.appendChild(card);
+
+        const ctx = document.getElementById(`spark-${d.replace(/\s+/g, '_')}`).getContext('2d');
+        new Chart(ctx, {
+          type: 'bar',
+           {
+            labels: ['ذكور', 'إناث'],
+            datasets: [{
+               [males, females],
+              backgroundColor: ['#2b6cb0', '#e53e3e'],
+              borderWidth: 0
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { display: false },
+              y: { display: false, beginAtZero: true }
+            }
+          }
+        });
+      });
+    }
+
+    // === Charts ===
+    function updateCharts() {
+      const byDistrict = {};
+      currentData.forEach(r => {
+        const d = r['الدائرة الانتخابية'] || 'غير محدد';
+        if (!byDistrict[d]) byDistrict[d] = { M: 0, F: 0 };
+        if (r['الجنس'] === 'M') byDistrict[d].M++;
+        else if (r['الجنس'] === 'F') byDistrict[d].F++;
+      });
+
+      const labels = Object.keys(byDistrict);
+      const maleData = labels.map(l => byDistrict[l].M);
+      const femaleData = labels.map(l => byDistrict[l].F);
+      const totalData = labels.map(l => byDistrict[l].M + byDistrict[l].F);
+
+      if (charts.genderDistrict) charts.genderDistrict.destroy();
+      if (charts.districtDoughnut) charts.districtDoughnut.destroy();
+
+      // Stacked Bar Chart
+      charts.genderDistrict = new Chart(els.genderDistrictChart, {
+        type: 'bar',
+         {
+          labels,
+          datasets: [
+            { label: 'ذكور', data: maleData, backgroundColor: '#2b6cb0' },
+            { label: 'إناث', data: femaleData, backgroundColor: '#e53e3e' }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { position: 'top', rtl: true } },
+          scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } }
+        }
+      });
+
+      // Doughnut Chart
+      const backgroundColors = [
+        '#2b6cb0', '#e53e3e', '#38a169', '#d69e2e', '#805ad5', '#0bc5ea',
+        '#ed64a6', '#f56565', '#48bb78', '#ecc94b', '#9f7aea', '#4299e1'
+      ];
+      charts.districtDoughnut = new Chart(els.districtDoughnutChart, {
+        type: 'doughnut',
+         {
+          labels,
+          datasets: [{
+            data: totalData,
+            backgroundColor: backgroundColors,
+            borderWidth: 2,
+            borderColor: '#ffffff'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'right', rtl: true },
+            tooltip: {
+              rtl: true,
+              callbacks: {
+                label: (context) => {
+                  const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                  const percentage = ((context.parsed / total) * 100).toFixed(1);
+                  return `${context.label}: ${context.parsed.toLocaleString('ar-EG')} (${percentage}%)`;
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+
+    // === Table ===
+    function renderTable() {
+      const { thead, tbody } = els.dataTable;
+      thead.innerHTML = '';
+      tbody.innerHTML = '';
+
+      if (currentData.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="15" style="text-align:center; padding:2rem; color:#718096;">لا توجد نتائج مطابقة</td></tr>`;
+        return;
+      }
+
+      const headers = Object.keys(currentData[0]);
+      const headerRow = document.createElement('tr');
+      headers.forEach(key => {
+        const th = document.createElement('th');
+        th.textContent = key;
+        th.dataset.sort = key;
+        th.addEventListener('click', () => {
+          if (sortConfig.key === key) {
+            sortConfig.direction = sortConfig.direction === 'asc' ? 'desc' : 'asc';
+          } else {
+            sortConfig.key = key;
+            sortConfig.direction = 'asc';
+          }
+          applyFilters();
+        });
+        if (sortConfig.key === key) {
+          th.innerHTML += ` <span>${sortConfig.direction === 'asc' ? '▲' : '▼'}</span>`;
+        }
+        headerRow.appendChild(th);
+      });
+      thead.appendChild(headerRow);
+
+      const searchQuery = els.search.value.trim().toLowerCase();
+      currentData.forEach(row => {
+        const tr = document.createElement('tr');
+        if (searchQuery) {
+          const matches = ['الاسم الشخصي للناخب', 'الاسم العائلي للناخب', 'رقم بطــاقة التعريف'].some(f => 
+            row[f] && row[f].toLowerCase().includes(searchQuery)
+          );
+          if (matches) tr.classList.add('highlight');
+        }
+
+        headers.forEach(key => {
+          const td = document.createElement('td');
+          td.contentEditable = true;
+          td.textContent = row[key] || '';
+          td.addEventListener('input', () => {
+            row[key] = td.textContent;
+          });
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+    }
+
+    // === Event Listeners ===
+    function setupEventListeners() {
+      const debouncedApply = debounce(applyFilters, 300);
+      els.search.addEventListener('input', debouncedApply);
+      els.filterGender.addEventListener('change', applyFilters);
+      els.filterDistrict.addEventListener('change', applyFilters);
+      els.filterOffice.addEventListener('change', applyFilters);
+
+      // Fill dropdowns
+      const districts = [...new Set(rawData.map(r => r['الدائرة الانتخابية']).filter(Boolean))];
+      const offices = [...new Set(rawData.map(r => r['اسم مكتب التصويت']).filter(Boolean))];
+
+      districts.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d;
+        opt.textContent = d;
+        els.filterDistrict.appendChild(opt);
+      });
+      offices.forEach(o => {
+        const opt = document.createElement('option');
+        opt.value = o;
+        opt.textContent = o;
+        els.filterOffice.appendChild(opt);
+      });
+
+      // Export
+      document.getElementById('saveExcel').addEventListener('click', () => {
+        try {
+          const ws = XLSX.utils.json_to_sheet(rawData);
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, ws, 'الناخبين');
+          XLSX.writeFile(wb, 'القائمة_الناخبين_المحدثة.xlsx');
+        } catch (err) {
+          alert('فشل الحفظ: ' + err.message);
+        }
+      });
+
+      // Print
+      document.getElementById('printReport').addEventListener('click', () => {
+        const office = els.filterOffice.value;
+        const printable = currentData.filter(r => !office || r['اسم مكتب التصويت'] === office);
+        if (printable.length === 0) return alert('لا توجد سجلات لطباعتها');
+
+        const win = window.open('', '_blank');
+        const headers = Object.keys(printable[0]);
+        const rows = printable.map(r => 
+          `<tr>${headers.map(h => `<td>${r[h] || ''}</td>`).join('')}</tr>`
+        ).join('');
+
+        win.document.write(`
+          <!DOCTYPE html>
+          <html dir="rtl">
+          <head>
+            <meta charset="UTF-8">
+            <title>تقرير ناخبين</title>
+            <style>
+              body { font-family: 'Tajawal', sans-serif; direction: rtl; padding: 2rem; }
+              table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+              th, td { border: 1px solid #000; padding: 0.5rem; text-align: center; }
+              th { background: #f1f5f9; }
+              h2 { text-align: center; }
+            </style>
+          </head>
+          <body>
+            <h2>تقرير الهيئة الناخبة${office ? ` - مكتب ${office}` : ''}</h2>
+            <table>${headers.map(h => `<th>${h}</th>`).join('')}${rows}</table>
+          </body>
+          </html>
+        `);
+        win.document.close();
+        win.print();
+      });
+    }
+
+    // === Initialize ===
+    let fuse;
+    loadExcel();
+  </script>
+</body>
+</html>
