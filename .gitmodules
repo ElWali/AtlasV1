@@ -1,0 +1,3 @@
+[submodule "AtlasV1/Leaflet"]
+	path = AtlasV1/Leaflet
+	url = https://github.com/CloudMade/Leaflet.git
